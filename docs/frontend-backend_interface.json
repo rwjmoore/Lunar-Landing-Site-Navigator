@@ -1,32 +1,31 @@
-
-
 {
-    "name": "artemis1_landing_location",
-    "position":{
-        "lat": 0.00,
-        "lon": 0.00,
-        "alt": 0.00
+  "candidate": {
+    "name": "South Pole Site A",
+    "location": {"latitude_deg": -89.92, "longitude_deg_east": 23.45, "surface_elevation_m": null},
+    "vehicle": {"solar_panel_mast_height_m": 2.0, "antenna_height_m": 2.0},
+    "metrics": {
+      "sun_visible_fraction": null,
+      "max_continuous_darkness_hours": null,
+      "earth_visible_fraction": null,
+      "max_continuous_earth_blackout_hours": null
     },
-    "start_time": "2024-06-01T00:00:00Z",
-    "end_time": "2024-06-01T00:00:00Z",
-    
-    "time_series":{
-        "time_UTC": ["2024-06-01T00:00:00Z", "2024-06-01T00:01:00Z", "2024-06-01T00:02:00Z"],
-        "comms_los": [true, true, false],
-        "solar_los": [true, false, false],
-        "solar_elevation_deg": [10.0, 5.0, -1.0],
-        "earth_elevation_deg": [20.0, 15.0, 10.0]
+    "feasibility": {"status": "unknown", "failed_constraints": [], "margins": {}},
+    "horizons": {
+      "azimuth_deg": [],
+      "sun_observer_horizon_elevation_deg": [],
+      "earth_observer_horizon_elevation_deg": []
     },
-    "terriain_horizon_profile": {
-        "azimuth_deg": [0, 45, 90, 135, 180, 225, 270, 315],
-        "elevation_deg": [10.0, 5.0, 0.0, -5.0, -10.0, -15.0, -20.0, -25.0]
+    "series": {
+      "timestamps_utc": [],
+      "sun_azimuth_deg": [], 
+      "sun_elevation_deg": [], 
+      "sun_visible": [],
+      "earth_azimuth_deg": [], 
+      "earth_elevation_deg": [], 
+      "earth_visible": []
     },
-    "summary_metrics":{ // metrics to be display on frontend 
-        "solar_access_percent": 0.00,
-        "solar_access_h": 0.00,
-        "earth_visibility_h": 0.00,
-        "earth_visibility_percent": 0.00,
-        "max_darkness_h": 0.00,
-        "max_blackout_h": 0.00
-    }
+    "diagnostics": [],
+    "provenance": {"dem_id": null, "ephemeris_id": null, "sample_step_seconds": 3600}
+  },
+  "computation_ms": null
 }
