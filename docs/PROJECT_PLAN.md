@@ -378,6 +378,8 @@ Use typed JSON API responses; keep offline JSON fixtures for UI development and 
 | `POST /optimize` (P1) | Bounded search over allowed site/date/height configurations with explicit objective/constraints. |
 | `GET /data-provenance` | Describe DEM, ephemeris sources/versions and assumptions. |
 
+**Implemented in M3 (2026-11-14):** all endpoints above except `/optimize`. Request rules, error codes, the `/compare` response shape and measured latency are in `docs/API.md`. Decisions made in M3: site match tolerance **100 m**; mission duration **≤ 366 days**; `/compare` takes **2–4 sites**; with no constraints, feasibility is `"unknown"`; a result containing unknown visibility returns `503 data_unavailable` because v1 visibility is boolean (none occurs with current data); CORS origins come from `LLSN_CORS_ORIGINS`. Rate limiting and request timeouts are left to deployment (M6).
+
 ### Example `POST /analyze` request
 
 ```json

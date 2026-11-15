@@ -2,7 +2,7 @@
 
 FastAPI service that will compute terrain-aware Sun/Earth line-of-sight and mission metrics for a fixed set of lunar south-pole sites. See [docs/PROJECT_PLAN.md](../../docs/PROJECT_PLAN.md) for scope and [docs/SCIENCE_CONVENTIONS.md](../../docs/SCIENCE_CONVENTIONS.md) for the physics conventions.
 
-**Status: M1 and M2 physics signed off and validated against NASA's published illumination maps** ([docs/physics/validation.md](../../docs/physics/validation.md)). The physics core runs end to end; the API wiring is M3. Only `GET /health` exists. Implemented and tested:
+**Status: M1 and M2 physics signed off and validated against NASA's published illumination maps** ([docs/physics/validation.md](../../docs/physics/validation.md)). **M3: the API serves `/sites`, `/analyze`, `/compare` and `/data-provenance`**; see [docs/API.md](../../docs/API.md). Only `GET /health` exists. Implemented and tested:
 
 | Component | Code | Explainer | Review |
 |---|---|---|---|
@@ -46,7 +46,7 @@ The SPICE kernels and terrain GeoTIFFs are not in the repo. Download the files l
 | Task | Command |
 |---|---|
 | Run all tests | `python -m pytest` |
-| Run the API locally | `uvicorn app.main:app --reload` then open http://127.0.0.1:8000/health |
+| Run the API locally | `uvicorn app.main:app --reload` then open http://127.0.0.1:8000/sites (needs the built data; see Setup) |
 | Interactive API docs | http://127.0.0.1:8000/docs (served by FastAPI) |
 | Rebuild the sky grid | `python -m pipeline.build_sky_grid` |
 | Cross-check against JPL Horizons (network) | `python -m pipeline.horizons_check` |
@@ -63,10 +63,11 @@ The SPICE kernels and terrain GeoTIFFs are not in the repo. Download the files l
 ```text
 src/backend/
 ├── app/                    # runtime server (FastAPI + NumPy)
-│   ├── main.py             # FastAPI app entry point
+│   ├── main.py             # FastAPI app: startup data loading, error handler, CORS (LLSN_CORS_ORIGINS)
 │   ├── api/
-│   │   ├── routes.py       # HTTP endpoints (only /health so far)
-│   │   └── schemas.py      # Pydantic models = the frontend/backend JSON contract
+│   │   ├── routes.py       # HTTP endpoints (docs/API.md)
+│   │   ├── schemas.py      # Pydantic models = the frontend/backend JSON contract + requests
+│   │   └── service.py      # site matching, analysis, Assessment -> contract mapping
 │   ├── astronomy/
 │   │   └── sky.py          # sky grid loading, mission sampling, topocentric Sun/Earth az/el
 │   ├── coordinates/
@@ -96,6 +97,7 @@ src/backend/
 │   └── sky_evidence.py     # P2 evidence tables and plot
 ├── tests/
 │   ├── test_health.py
+│   ├── test_api.py         # /sites, /analyze, /compare, errors, provenance (real data)
 │   ├── test_contract.py    # validates docs/frontend-backend_interface.json against schemas.py
 │   ├── test_frames.py
 │   ├── test_sky_runtime.py # synthetic grids, no SPICE
