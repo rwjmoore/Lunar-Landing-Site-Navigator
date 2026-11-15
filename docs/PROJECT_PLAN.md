@@ -106,7 +106,7 @@ lunar-landing-site-navigator/
 │       ├── views/             # Single site, comparison, optional map
 │       ├── api/               # Typed API client
 │       └── types/             # Shared contract types
-├── scripts/                   # Fetch, preprocess, validate and precompute
+├── src/backend/pipeline/      # Offline: fetch, preprocess, validate and precompute (not shipped)
 ├── data/                      # Small manifests/sample assets; large files ignored
 └── docs/                      # PROJECT_PLAN, conventions, assumptions, validation, demo
 ```
@@ -446,7 +446,7 @@ SPICE kernels, rasterio/GDAL, GB-scale DEMs     FastAPI + Pydantic + NumPy only
         └──► small, versioned, checksummed artifacts ────┘
 ```
 
-All heavy dependencies, large downloads, and physics-review-gated computation run offline in `scripts/`. The server only loads precomputed artifacts and performs vectorized calculations.
+All heavy dependencies, large downloads, and physics-review-gated computation run offline in `src/backend/pipeline/` (the "pipeline" dependency extra; never installed on the server). The server only loads precomputed artifacts and performs vectorized calculations.
 
 **Artifacts:**
 
