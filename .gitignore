@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# Large source data never committed (PROJECT_PLAN.md section 8.1):
+# DEM GeoTIFFs, SPICE kernels, and downloaded per-site artifacts.
+data/raw/
+data/kernels/
+data/artifacts/
+*.tif
+*.TIF
+*.bsp
+*.bpc

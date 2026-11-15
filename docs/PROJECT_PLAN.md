@@ -43,8 +43,8 @@ The application must let a user:
 - Separate antenna height from solar-panel mast height and recompute Earth LOS independently.
 - Mission feasibility margins and **simultaneous** Sun/Earth visibility windows.
 - **Mission Rescue:** recommend small changes to mast height, mission start date, or a predefined alternate site, with quantified trade-offs and physical explanations.
-- Clickable south-pole 2D map; choosing an available site updates the analysis.
-- Basic localized candidate search around a point, within a bounded set of terrain cells/locations.
+- Clickable south-pole 2D map; choosing one of the **fixed supported sites** updates the analysis (no arbitrary click-anywhere analysis; see §8.1).
+- Basic localized candidate search within the precomputed terrain crop of a supported site.
 - Source of dominant terrain horizon obstruction (bearing and approximate distance), if derived reliably from the terrain data.
 
 ### P2 — Nice to have / stretch
@@ -72,13 +72,13 @@ The application must let a user:
 
 Choose the smallest implementation that both engineers can maintain.
 
-- **Physics and processing:** Python, NumPy, SciPy; Rasterio / PyProj for georeferenced raster access and transformations.
+- **Physics and processing:** Python, NumPy, SciPy; Rasterio / PyProj for georeferenced raster access and transformations (**offline pipeline only**; the runtime server needs only NumPy, see §8.1).
 - **Astronomy:** a single primary ephemeris adapter based on JPL Horizons or local SPICE (SpiceyPy); use the other as a validation reference if practical. Cache requests and retain kernel/source versions.
 - **Backend/API:** FastAPI and typed Pydantic request/response models.
 - **Frontend:** React + TypeScript, with a plotting library such as Plotly.js for horizon, time-series, and comparison charts.
 - **Map:** lightweight 2D lunar south-pole map, using verified imagery/DEM raster layers or a simple projected map with correctly mapped coordinates.
 - **Data:** local cached/preprocessed LOLA DEM crops and ephemeris samples; JSON or compressed array files are sufficient for the MVP. No database server is required.
-- **Deployment:** one straightforward web deployment with a documented start command and a reproducible offline demonstration mode.
+- **Deployment:** one straightforward web deployment with a documented start command and a reproducible offline demonstration mode. Public hosting of a containerized FastAPI service fed by precomputed artifacts (§8.1).
 
 **Alternative:** If neither engineer is comfortable with React, a Python-first Dash + Plotly implementation is acceptable. Pick one frontend stack and do not build both.
 
@@ -88,19 +88,19 @@ Keep the numerical core independent of the web framework.
 
 ```text
 lunar-landing-site-navigator/
-├── PROJECT_PLAN.md
 ├── README.md
-├── backend/
+├── src/backend/
 │   ├── app/
 │   │   ├── api/                # FastAPI endpoints + request/response schemas
 │   │   ├── astronomy/          # Ephemeris adapters, UTC/time handling
 │   │   ├── coordinates/        # Lunar frames and local azimuth/elevation
 │   │   ├── terrain/            # DEM loading, reprojection, horizon profiles
-│   │   ├── physics/            # Pure LOS/visibility and temporal metrics
+│   │   ├── physics/            # Pure LOS/visibility series
+│   │   ├── metrics/            # Reusable metric framework + registry (docs/metrics.md)
 │   │   ├── planning/           # Feasibility, explanations, scoring, optimization
 │   │   └── data/               # Data-source adapters, caching, provenance
 │   └── tests/
-├── frontend/
+├── src/frontend/              # owned by the frontend engineer
 │   └── src/
 │       ├── components/        # Mission controls, horizon, timeline, metrics
 │       ├── views/             # Single site, comparison, optional map
@@ -108,7 +108,7 @@ lunar-landing-site-navigator/
 │       └── types/             # Shared contract types
 ├── scripts/                   # Fetch, preprocess, validate and precompute
 ├── data/                      # Small manifests/sample assets; large files ignored
-└── docs/                      # Conventions, assumptions, validation, demo
+└── docs/                      # PROJECT_PLAN, conventions, assumptions, validation, demo
 ```
 
 ### Engineer / agent workstreams
@@ -188,7 +188,13 @@ The physics engine needs:
 | Near-field | 5 m/px LOLA mosaic, 87–90°S (PGDA 81), or per-site 5 m/px DEMs (PGDA 78) | 5 m | 0 – ~10 km |
 | Far-field | 20 m/px LOLA DEM, 80–90°S (`LDEM_80S_20MPP_ADJ.TIF`, PGDA 90), downsampled offline to ~100 m | ~100 m | ~10 – 200 km |
 
-**Horizon search radius: 200 km.** Justification: at the south pole the Sun's elevation stays within roughly ±1.5° of the local geometric horizon, so terrain *below* 0° still matters. A feature of relative height *h* at range *d* appears at elevation ≈ *h/d − d/(2R)*; for a 5 km massif to fall below −1.5° requires *d* ≈ 186 km. A small local crop would therefore overestimate illumination.
+**Horizon search radius: 200 km.** Justification: at the south pole the Sun's elevation stays within roughly ±1.5° of the local geometric horizon, so terrain *below* 0° still matters. A terrain feature of height $h$ above the observer, at distance $d$, appears at an elevation angle (in radians) of approximately
+
+$$
+\alpha \approx \frac{h}{d} - \frac{d}{2R}
+$$
+
+where $R = 1737.4\ \text{km}$ is the lunar radius. The first term is the feature's height; the second is how far the curved surface drops away. For a $5\ \text{km}$ massif, $\alpha$ only falls below $-1.5^\circ$ at $d \approx 186\ \text{km}$. A small local crop would therefore overestimate illumination.
 
 Demo sites should be chosen from the Mazarico et al. (2011) numbered sites that have Barker 5 m DEMs (Sites 1, 4, 7, 11) so published illumination results are available for validation. **M1 must still verify** that the selected files are downloadable, check their CRS/datum metadata, and inspect the `LDEC` count map for sparse/no-data coverage. Large source rasters are never committed or shipped; only per-site derived artifacts are (see §5.3).
 
@@ -196,9 +202,9 @@ Demo sites should be chosen from the Mazarico et al. (2011) numbered sites that 
 
 **Method: azimuthal ray-marching** (not full-raster projection). Projecting every DEM pixel within 200 km at 5–20 m resolution is ~10⁸ points per site per height; ray-marching samples only what each azimuth needs and naturally records the obstruction range.
 
-For a selected site and observer height *h_obs*:
+For a selected site and observer height $h_\text{obs}$:
 
-1. Place the observer at DEM surface height (bilinear interpolation) + *h_obs*, in Moon-fixed Cartesian coordinates on the 1737.4 km reference sphere.
+1. Place the observer at DEM surface height (bilinear interpolation) + $h_\text{obs}$, in Moon-fixed Cartesian coordinates on the 1737.4 km reference sphere.
 2. Cast **1440 rays (0.25° azimuth spacing)**. Along each ray, step outward on the great circle with **range-adaptive spacing** (step ≈ local DEM pixel size, growing with range).
 3. Convert each sample (azimuth, range) → lat/lon → polar-stereographic x/y; bilinearly sample terrain height from the appropriate resolution tier.
 4. Compute each sample's elevation angle in the observer's local east/north/up basis (formula below).
@@ -207,7 +213,13 @@ For a selected site and observer height *h_obs*:
 7. Mark a ray **`no_data`** if any sample before its maximum falls on missing/out-of-coverage terrain. No-data must never be treated as unobstructed.
 8. Produce `horizon_elevation_deg[azimuth]` with explicit 0°/360° seam handling.
 
-**Near-field / far-field split.** Raising the observer by Δh changes the apparent elevation of terrain at range *d* by ≈ Δh·cos²α / *d* (≈0.57° at 1 km, 0.06° at 10 km, 0.01° at 50 km for Δh = 10 m). Therefore:
+**Near-field / far-field split.** Raising the observer by $\Delta h$ lowers the apparent elevation of terrain at distance $d$ (seen at elevation $\alpha$) by approximately
+
+$$
+\Delta\alpha \approx \frac{\Delta h \cos^2\alpha}{d}
+$$
+
+For $\Delta h = 10\ \text{m}$ that is about $0.57^\circ$ at $1\ \text{km}$, $0.06^\circ$ at $10\ \text{km}$ and $0.01^\circ$ at $50\ \text{km}$: only nearby terrain is noticeably affected. Therefore:
 
 - **Far-field horizon (~10–200 km)** is precomputed **once per site** offline at the base observer height, storing per-azimuth max elevation and source range. At request time, apply the analytic Δh correction using the stored range.
 - **Near-field horizon (0–~10 km)** is recomputed per observer height (solar mast, antenna) from the 5 m crop.
@@ -220,24 +232,37 @@ For a selected site and observer height *h_obs*:
 
 Cache profiles keyed by site, observer height, DEM version and processing parameters.
 
-For relative vector **r**, local up **u**, and horizontal component **r_h**:
+**Elevation angle of a terrain sample.** Let $\mathbf{r}$ be the vector from the observer to the sample and $\mathbf{u}$ the observer's local "up" unit vector. Split $\mathbf{r}$ into its vertical part $(\mathbf{r}\cdot\mathbf{u})\,\mathbf{u}$ and its horizontal part:
 
-\[
-\alpha = \operatorname{atan2}(\mathbf r\cdot\mathbf u,\|\mathbf r_h\|),\qquad
-\mathbf r_h=\mathbf r-(\mathbf r\cdot\mathbf u)\mathbf u
-\]
+$$
+\mathbf{r}_h = \mathbf{r} - (\mathbf{r}\cdot\mathbf{u})\,\mathbf{u}
+$$
+
+The elevation angle is then the angle between $\mathbf{r}$ and the horizontal plane:
+
+$$
+\alpha = \operatorname{atan2}\left(\mathbf{r}\cdot\mathbf{u},\ \lVert\mathbf{r}_h\rVert\right)
+$$
+
+$\alpha > 0$ means the sample is above the observer's local horizontal; $\alpha < 0$ means below.
 
 Use Moon-fixed geometry to capture curvature; a flat-plane approximation is not sufficient for long-range horizons. The horizon projection is a **scientific plotting profile**, not a photorealistic lunar streetscape.
 
 ### 5.4 Sun and Earth LOS over time
 
-For each requested sample time, obtain local azimuth/elevation for Sun and Earth. Then evaluate:
+For each requested sample time, obtain local azimuth/elevation for Sun and Earth. A body is visible when it is above the terrain horizon in its direction:
 
-\[
-V_{body}(t)=\big[e_{body}(t)>H(a_{body}(t);\,h_{observer})\big]
-\]
+$$
+V_\text{body}(t) =
+\begin{cases}
+\text{visible} & \text{if } e_\text{body}(t) > H\left(a_\text{body}(t);\ h_\text{obs}\right) \\
+\text{obstructed} & \text{otherwise}
+\end{cases}
+$$
 
-Implement interpolation of `H` across adjacent azimuth bins. Use the solar mast observer height for Sun LOS and antenna observer height for Earth LOS if independently modeled; otherwise document the shared-height simplification.
+where $a_\text{body}(t)$ and $e_\text{body}(t)$ are the body's azimuth and elevation at time $t$, and $H(a;\ h_\text{obs})$ is the terrain horizon elevation at azimuth $a$ for observer height $h_\text{obs}$. If the horizon is `no_data` in that direction, the result is **unknown** (see `docs/metrics.md` §3.2).
+
+Implement interpolation of $H$ across adjacent azimuth bins. Use the solar mast observer height for Sun LOS and antenna observer height for Earth LOS if independently modeled; otherwise document the shared-height simplification.
 
 A point-source binary visibility approximation is acceptable for MVP; note the omitted apparent angular radii, partial solar disk exposure, and antenna/radio-link constraints. Because the Sun's angular radius (~0.27°) is comparable to its elevation excursion at the pole, **visible solar-disk fraction is a P1 priority**: compute it from the same horizon profile once binary LOS works.
 
@@ -258,6 +283,8 @@ Return for every candidate over the *same sampled time window*:
 - `solar_generation_opportunity`: clearly labeled visibility-based proxy for MVP; only calculate energy if a documented explicit power model is implemented.
 
 Use time-aware interval accounting and define treatment of interval endpoints, missing samples, and intervals extending to mission boundaries. Display the sample cadence and DEM resolution.
+
+**Metric framework (decided):** metrics are implemented internally as pluggable units (`id`, `label`, `units`, required series, `compute`) listed in one explicit registry, and constraints reference metrics by id. Definitions, time accounting and constraint rules are in `docs/metrics.md` (physics review gate). The **API contract keeps the four fixed metric fields for now**; changing it to a generic metric list is deferred until more metrics exist and must be agreed with the frontend engineer.
 
 ### 5.6 Explainable scoring and failure diagnostics
 
@@ -336,6 +363,8 @@ Do not assume increasing mast height always makes an infeasible mission feasible
 
 Use typed JSON API responses; keep offline JSON fixtures for UI development and a deterministic demo. The following is the **proposed contract**; update both ends together if changed.
 
+**Site addressing (decided):** requests identify sites by **latitude/longitude**, not by a site id, so new sites can be added later without a contract change. Because only precomputed sites are supported (§8.1), the API matches the requested coordinates to a supported site within a documented tolerance and returns a documented `unavailable` error otherwise. `GET /sites` lists the supported coordinates.
+
 ### API endpoints
 
 | Endpoint | Purpose |
@@ -403,6 +432,47 @@ The `<5 s` target applies to a documented standard workload, e.g. 2 supported pr
 - Avoid live third-party network calls in the primary demo path.
 - If arbitrary coordinates cannot reliably meet the response target, restrict live analysis to supported points and label unavailable map areas clearly.
 - Store a small set of verified reference scenarios so the application remains demonstrable without external services.
+
+### 8.1 Hosting and deployment architecture
+
+The app is hosted publicly. **Decision: fixed site list only.** The API supports a curated set of precomputed sites; arbitrary click-anywhere analysis is out of scope because it would require GB-scale terrain on the server.
+
+**Two-stage architecture: build offline, keep the server light.**
+
+```text
+OFFLINE PIPELINE (developer machine / CI)       RUNTIME SERVER (hosted)
+SPICE kernels, rasterio/GDAL, GB-scale DEMs     FastAPI + Pydantic + NumPy only
+        │                                                ▲
+        └──► small, versioned, checksummed artifacts ────┘
+```
+
+All heavy dependencies, large downloads, and physics-review-gated computation run offline in `scripts/`. The server only loads precomputed artifacts and performs vectorized calculations.
+
+**Artifacts:**
+
+| Artifact | Contents | Expected size | Distribution |
+|---|---|---|---|
+| Sky grid | Moon-centered Sun and Earth vectors in `MOON_ME` on a fixed UTC grid (hourly) over the supported date range | ~6 MB for 15 years (estimate) | Committed to repo |
+| Per-site terrain | Near-field DEM crop (int16 cm or float32, + quality mask), far-field horizon profile with source ranges, site metadata | ~20–64 MB per site (estimate, verify in M1) | GitHub Release assets, fetched with checksum at container build |
+| Provenance manifest | Source product IDs, filenames, versions, download dates, checksums, kernel set | small | Committed to repo |
+
+**Sky grid rationale:** Sun and Earth directions from the Moon's center in `MOON_ME` are site-independent. The server computes topocentric vectors by subtracting the site position (exact for the geometric Earth offset; residual light-time difference from center vs surface is ~6 ms, negligible). This removes SPICE from the server, which also avoids CSPICE's global, non-thread-safe kernel state inside a multi-worker web process. The P2 physics gate must include a test showing this method matches direct `spkcpo` site queries within a documented tolerance.
+
+**Runtime rules:**
+
+- No network downloads at request time; artifacts are present in the image at startup.
+- Mission `sample_step_seconds` must be a multiple of the sky-grid cadence, so no runtime interpolation is needed.
+- Per-site terrain crops are stored as uncompressed `.npy` and memory-mapped to keep RAM low.
+- The supported date range and site list are advertised by `/health` and `/sites`; requests outside them return a documented error.
+- Source GeoTIFFs and SPICE kernels never ship in the image or the repo.
+
+**Public-endpoint protections** (enforced in Pydantic request models and server config): maximum mission duration, minimum sample step, maximum sites per `/compare`, bounded vehicle heights, per-request timeout, basic rate limiting.
+
+**Frontend integration:** the frontend is built separately by another engineer and integrates **only through the JSON interface** (`docs/frontend-backend_interface.json`). The API must configure CORS for the frontend's host domain and be served over HTTPS.
+
+**Hosting platform:** any container host works (e.g. Fly.io, Render, Cloud Run, Hugging Face Spaces). Free tiers spin down when idle and can add 10–60 s cold starts; for live demos use an always-on instance or a warm-up request. Choose the platform once artifact sizes are measured.
+
+**Open items:** supported date range (proposed 2026–2040); hosting budget (free tier vs always-on); frontend host domain for CORS.
 
 ## 9. Execution milestones (in order)
 

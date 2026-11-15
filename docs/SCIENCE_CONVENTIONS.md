@@ -78,7 +78,10 @@ For a relative vector `r = target − p`:
 ## 8. Ephemeris (decision D1)
 
 - **Primary: SpiceyPy with local kernels.** JPL Horizons is used only for validation. **LOCKED.**
-- **Geometry:** topocentric. Use `spkcpo` with the observer's MOON_ME position, frame `MOON_ME`, aberration correction `LT+S`, for targets `SUN` and `EARTH`. Then convert the resulting vector to (A, α) with §5. **LOCKED.**
+- **Geometry:** topocentric. **LOCKED.** Implemented in two stages (see `PROJECT_PLAN.md` §8.1):
+  - *Offline sky grid:* SPICE computes Moon-centered `SUN` and `EARTH` vectors in frame `MOON_ME`, aberration correction `LT+S`, on a fixed hourly UTC grid over the supported date range.
+  - *Runtime:* topocentric vector = Moon-centered vector − observer MOON_ME position; then convert to (A, α) with §5.
+  - *Reference check:* the P2 gate compares this method against direct `spkcpo` queries at the observer position (same frame and correction). Acceptance tolerance **TO VERIFY (M1)**.
 - **Why topocentric matters:** Earth's lunar-radius parallax is ~0.26° (1737.4 / 384,400 rad), which is significant near the horizon. For the Sun it is negligible, but the same code path is used for consistency.
 - **Kernel set** (exact filenames and versions recorded in provenance): **TO VERIFY (M1)** against the NAIF generic kernels site.
   - Leapseconds (LSK).
