@@ -2,7 +2,7 @@
 
 FastAPI service that will compute terrain-aware Sun/Earth line-of-sight and mission metrics for a fixed set of lunar south-pole sites. See [docs/PROJECT_PLAN.md](../../docs/PROJECT_PLAN.md) for scope and [docs/SCIENCE_CONVENTIONS.md](../../docs/SCIENCE_CONVENTIONS.md) for the physics conventions.
 
-**Status: M1 in progress.** Only `GET /health` exists. Implemented and tested:
+**Status: M1 physics foundations complete (P1–P3 signed off).** Only `GET /health` exists. Implemented and tested:
 
 | Component | Code | Explainer | Review |
 |---|---|---|---|
@@ -10,7 +10,9 @@ FastAPI service that will compute terrain-aware Sun/Earth line-of-sight and miss
 | P1 Coordinates and local geometry | `app/coordinates/` | [docs/physics/frames.md](../../docs/physics/frames.md) | Signed off |
 | P2 Sun/Earth directions (sky grid) | `app/astronomy/`, `pipeline/` | [docs/physics/sky.md](../../docs/physics/sky.md) | Signed off |
 
-Terrain (P3) and the horizon/visibility physics (M2) are not implemented yet.
+| P3 Terrain ingest | `app/terrain/`, `pipeline/build_terrain.py` | [docs/physics/terrain.md](../../docs/physics/terrain.md) | Signed off |
+
+The horizon/visibility physics (M2) is not implemented yet.
 
 ## Two halves: runtime and offline pipeline
 
@@ -35,7 +37,7 @@ pip install -r requirements.lock && pip install -e . --no-deps
 pip install -e ".[dev,pipeline]"
 ```
 
-The SPICE kernels are not in the repo. Download the files listed in [data/manifests/kernels.json](../../data/manifests/kernels.json) from `source_base_url` + each `path` into `data/kernels/`. The pipeline verifies their SHA-256 checksums before use. Without them, the SPICE validation tests are skipped and everything else still runs.
+The SPICE kernels and terrain GeoTIFFs are not in the repo. Download the files listed in [data/manifests/kernels.json](../../data/manifests/kernels.json) into `data/kernels/` and those in [data/manifests/terrain.json](../../data/manifests/terrain.json) (about 1 GB) into `data/raw/terrain/`, each from `source_base_url` + its `path`. The pipeline verifies SHA-256 checksums before use. Without them, the SPICE and real-terrain tests are skipped and everything else still runs.
 
 ## Commands
 
@@ -47,6 +49,8 @@ The SPICE kernels are not in the repo. Download the files listed in [data/manife
 | Rebuild the sky grid | `python -m pipeline.build_sky_grid` |
 | Cross-check against JPL Horizons (network) | `python -m pipeline.horizons_check` |
 | Regenerate P2 review evidence and plot | `python -m pipeline.sky_evidence` |
+| Build terrain artifacts and site list | `python -m pipeline.build_terrain` |
+| Regenerate P3 review evidence and images | `python -m pipeline.terrain_evidence` |
 | Refresh the lock file | `pip freeze --exclude-editable` into `requirements.lock` (keep the two header comment lines) |
 
 ## Layout
@@ -62,14 +66,19 @@ src/backend/
 │   │   └── sky.py          # sky grid loading, mission sampling, topocentric Sun/Earth az/el
 │   ├── coordinates/
 │   │   └── frames.py       # site <-> position, east/north/up, az/el, great circles
+│   ├── terrain/
+│   │   └── grid.py         # polar stereographic projection, TerrainGrid, bilinear height lookup
 │   ├── metrics/
 │   │   ├── core.py         # EvaluationContext, Metric interface, MetricResult, runner
 │   │   ├── visibility.py   # VisibleFraction, LongestOutage (reused for Sun and Earth)
 │   │   └── registry.py     # the explicit list of active metrics
 │   └── planning/
 │       └── constraints.py  # constraints by metric id, margins, feasibility
-├── pipeline/               # offline only (SpiceyPy, matplotlib)
+├── pipeline/               # offline only (SpiceyPy, rasterio, pyproj, matplotlib)
+│   ├── checksums.py        # SHA-256 verification against data/manifests/
 │   ├── spice_kernels.py    # checksum-verified DE421 kernel loading
+│   ├── build_terrain.py    # terrain artifacts + data/sites/south_pole_sites.json
+│   ├── terrain_evidence.py # P3 evidence tables and images
 │   ├── build_sky_grid.py   # builds data/sky/ grid
 │   ├── horizons_check.py   # JPL Horizons cross-check
 │   └── sky_evidence.py     # P2 evidence tables and plot
@@ -79,6 +88,8 @@ src/backend/
 │   ├── test_frames.py
 │   ├── test_sky_runtime.py # synthetic grids, no SPICE
 │   ├── test_sky_spice.py   # real grid vs SPICE (skipped without kernels)
+│   ├── test_terrain_grid.py # synthetic grids, projection vs pyproj
+│   ├── test_terrain_data.py # real artifacts vs source GeoTIFFs (skipped if not built)
 │   ├── test_metrics_core.py
 │   ├── test_visibility_metrics.py
 │   └── test_constraints.py

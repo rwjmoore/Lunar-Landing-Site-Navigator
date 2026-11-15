@@ -24,21 +24,23 @@
 ## 3. Lunar body model and reference frame
 
 - **Body-fixed frame: `MOON_ME`** (mean Earth / polar axis), because the LOLA DEM products are delivered in MOON_ME. **LOCKED.**
-- **Reference surface: sphere, R = 1737.4 km.** DEM heights are relative to this sphere. **TO VERIFY (M1)** against each product's metadata/label.
+- **Reference surface: sphere, R = 1737.4 km.** DEM heights are relative to this sphere. **LOCKED**: every terrain file declares this sphere, and the 5 m and 40 m products agree to under 0.25 m on average (`docs/physics/terrain.md` §8.1).
 - **Coordinates:** planetocentric latitude; **east-positive longitude**, range `[0°, 360°)` internally. The API accepts `longitude_deg_east` in `[−180°, 360°)` and normalizes. **LOCKED.**
-- **Frame realization:** the PGDA DEMs are MOON_ME as realized with DE421. If the ephemeris uses DE440, document the DE421 vs DE440 MOON_ME offset (expected to be metre-level, negligible at our angular scales). **TO VERIFY (M1).**
+- **Frame realization:** the PGDA DEMs are MOON_ME as realized with DE421, and the ephemeris uses DE421 too, so no offset is needed. **LOCKED** (§11).
 
 ## 4. Terrain data (decision D2)
 
 | Tier | Product | Native resolution | Used range | Status |
 |---|---|---|---|---|
-| Near-field | PGDA 81 5 m/px mosaic (87–90°S) or PGDA 78 per-site 5 m DEMs | 5 m | 0 – ~10 km | **TO VERIFY (M1)**: filenames, size, CRS |
-| Far-field | PGDA 90 `LDEM_80S_20MPP_ADJ.TIF` (80–90°S), downsampled offline | 20 m → ~100 m | ~10 – 200 km | **TO VERIFY (M1)**: availability, CRS |
-| Quality mask | Matching `LDEC` (LOLA returns per pixel) | as above | as above | **TO VERIFY (M1)** |
+| Near-field | PGDA 78 per-site 5 m DEMs (`SiteNN_final_adj_5mpp_surf.tif`, 16 × 16 km each) | 5 m | 0 – per-site radius, max 8 km (Site 04: 6.31 km) | **LOCKED** |
+| Far-field | PGDA 90 `LDEM_80S_40MPP_ADJ.TIF` (80–90°S, ±304 km) | 40 m | 8 – 200 km | **LOCKED** |
+| Count map | Matching `LDEC` (LOLA returns per pixel), inspection only | 5 m | — | **LOCKED** |
 
-- **Projection:** south polar stereographic, x/y in metres. Exact projection parameters (center, scale factor, sphere radius) must be read from the GeoTIFF CRS, never hard-coded from memory. **TO VERIFY (M1).**
-- **Sampling:** bilinear interpolation of heights. **LOCKED.**
-- **No-data:** pixels flagged as no-data, or outside coverage, are **unknown**, never zero height and never unobstructed. Whether low `LDEC` counts (interpolated pixels) should also be flagged is **TO VERIFY (M1)** after inspecting the count maps.
+Files and checksums: `data/manifests/terrain.json`. Details and evidence: `docs/physics/terrain.md`.
+
+- **Projection:** `+proj=stere +lat_0=-90 +lat_ts=-90 +lon_0=0 +x_0=0 +y_0=0 +R=1737400`, read from every file and enforced by the build. **LOCKED.**
+- **Sampling:** bilinear interpolation between pixel centres (files are pixel-registered). **LOCKED.**
+- **No-data:** NaN pixels, or points outside coverage, are **unknown**, never zero height and never unobstructed. Interpolated pixels (`LDEC` = 0, ~90% of 5 m pixels) are used as heights, not masked; the measured fraction is reported in provenance. **LOCKED** (approved in P3).
 - **Repository policy:** source GeoTIFFs are never committed. Only derived per-site artifacts (near-field crop, far-field horizon profile, provenance) are versioned or shipped. **LOCKED.**
 
 ## 5. Local observer frame and angles
@@ -111,5 +113,6 @@ Record each TO VERIFY resolution here: item, observed value, source, date, who v
 | Item | Observed | Source | Date | By |
 |---|---|---|---|---|
 | Kernel set (§8) | DE421: `naif0012.tls`, `de421.bsp`, `moon_pa_de421_1900-2050.bpc`, `moon_080317.tf`, `moon_assoc_me.tf`; checksums in `data/manifests/kernels.json` | NAIF generic kernels | 2026-11-14 | Claude (download), Randy Moore (DE421 approved; P2 signed off 2026-11-14) |
+| Terrain projection and datum (§3, §4) | All 9 files: south polar stereographic on R = 1,737,400 m, NaN no-data (none present); 5 m vs 40 m mean height difference −0.24 to +0.17 m | GeoTIFF metadata; `docs/physics/terrain.md` §8.1 | 2026-11-14 | Claude (measured) |
 | Ephemeris tolerances (§8) | Grid method vs SPICE at site: worst 2.7e-5° (tolerance 0.001°); vs JPL Horizons: worst 0.00003° (tolerance 0.01°) | `docs/physics/sky.md` §7.1 | 2026-11-14 | Claude (measured); tolerances approved by Randy Moore |
 | Frame realization (§3) | `moon_080317.tf` defines `MOON_ME` relative to `MOON_ME_DE421`, matching the LOLA DEM frame; no DE421/DE440 offset needed | `moon_080317.tf` frame definitions | 2026-11-14 | Claude |

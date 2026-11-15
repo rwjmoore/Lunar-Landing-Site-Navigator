@@ -1,0 +1,21 @@
+{
+  "description": "LOLA south-pole terrain source files for the offline terrain pipeline (P3). Files live in data/raw/terrain/ (gitignored). Verify with sha256 before use.",
+  "source_base_url": "https://pgda.gsfc.nasa.gov/data/",
+  "downloaded_utc": "2026-11-14",
+  "citations": [
+    "Barker, M. K., et al. (2021), Improved LOLA elevation maps for south pole landing sites: Error estimates and their impact on illumination conditions, Planetary & Space Science 203, 105119, doi:10.1016/j.pss.2020.105119",
+    "Barker, M. K., et al. (2023), Planetary Science Journal (LOLA 20 m/px south polar DEM and derived products; PGDA product 90)",
+    "Mazarico, E., et al. (2011), Illumination conditions of the lunar polar regions using LOLA topography, Icarus 211(2), 1066-1081, doi:10.1016/j.icarus.2010.10.030 (site numbering)"
+  ],
+  "files": [
+    {"name": "Site01_final_adj_5mpp_surf.tif", "role": "5 m DEM, Site 01 (Connecting ridge)", "path": "LOLA_5mpp/Site01/Site01_final_adj_5mpp_surf.tif", "bytes": 40980810, "sha256": "3ba7b97cb00a2bcf21189c3aeb535f65afc21207154ab9f0d43c5bdc1f7e747e"},
+    {"name": "Site01_final_adj_5mpp_ldec.tif", "role": "5 m LOLA count map, Site 01", "path": "LOLA_5mpp/Site01/Site01_final_adj_5mpp_ldec.tif", "bytes": 40980744, "sha256": "16d6ed21020ad48fa71d94e7437492acf5bf04118f52bcd292f57f22ead4cd23"},
+    {"name": "Site04_final_adj_5mpp_surf.tif", "role": "5 m DEM, Site 04 (Shackleton rim)", "path": "LOLA_5mpp/Site04/Site04_final_adj_5mpp_surf.tif", "bytes": 40980806, "sha256": "38ff70dbdf2f066c2cfa94a646c3a59d653ce7f6b4528b15fc1b43ee397ce758"},
+    {"name": "Site04_final_adj_5mpp_ldec.tif", "role": "5 m LOLA count map, Site 04", "path": "LOLA_5mpp/Site04/Site04_final_adj_5mpp_ldec.tif", "bytes": 40980740, "sha256": "fcc8c2219ae2368d5b2a1f6aec05fcf96cf725f3035ac8d80efc312a4ff29227"},
+    {"name": "Site07_final_adj_5mpp_surf.tif", "role": "5 m DEM, Site 07 (Peak near Shackleton)", "path": "LOLA_5mpp/Site07/Site07_final_adj_5mpp_surf.tif", "bytes": 40980808, "sha256": "38aaee10bb4da4d63e7427aa1ca25c79bdbc649d212079a04990e135462091f8"},
+    {"name": "Site07_final_adj_5mpp_ldec.tif", "role": "5 m LOLA count map, Site 07", "path": "LOLA_5mpp/Site07/Site07_final_adj_5mpp_ldec.tif", "bytes": 40980742, "sha256": "860ff76518edaa4f6b3d5b637c9192dc84541a8cc27487f21f9d2bd19181487b"},
+    {"name": "Site11_final_adj_5mpp_surf.tif", "role": "5 m DEM, Site 11 (de Gerlache rim)", "path": "LOLA_5mpp/Site11/Site11_final_adj_5mpp_surf.tif", "bytes": 40980806, "sha256": "58f3372c35bbd6baf38ffd5633c1c96b59bd89dbd252150581d12893a43136e5"},
+    {"name": "Site11_final_adj_5mpp_ldec.tif", "role": "5 m LOLA count map, Site 11", "path": "LOLA_5mpp/Site11/Site11_final_adj_5mpp_ldec.tif", "bytes": 40980742, "sha256": "aa779cddc7948809d0053ae855ab09a3e1321ac1289223aa68080f89a0d4dbff"},
+    {"name": "LDEM_80S_40MPP_ADJ.TIF", "role": "40 m DEM, 80-90 S (far field)", "path": "LOLA_20mpp/LDEM_80S_40MPP_ADJ.TIF", "bytes": 716299920, "sha256": "b7f3567bfa405dbcb42f867f6cd3c9932ca9752b4363ce1eef835f9115c1dd76"}
+  ]
+}
