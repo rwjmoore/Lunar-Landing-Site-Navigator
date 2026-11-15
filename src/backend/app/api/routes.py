@@ -6,6 +6,9 @@ Description: HTTP endpoints (PROJECT_PLAN.md section 7).
     GET  /sites             supported sites, date range and request limits
     POST /analyze           one site: horizons, Sun/Earth series, metrics, feasibility
     POST /compare           2-4 sites with one shared mission, vehicle and constraints
+    POST /calendar          one mission length at many start dates (date flexibility)
+    POST /insights          plain-language explanation of an analysis
+    POST /rescue            smallest single change that makes a mission pass
     GET  /data-provenance   data sources, versions, assumptions and physics docs
 
     Service errors become JSON bodies {"error": code, "message": ..., ...details}
@@ -23,6 +26,7 @@ from app.api.schemas import (
     HealthResponse,
     SitesResponse,
 )
+from app.api import planning_schemas, planning_service
 from app.api.service import AnalysisService
 
 router = APIRouter()
@@ -54,6 +58,24 @@ def analyze(body: AnalyzeRequest, request: Request) -> AnalyzeResponse:
 def compare(body: CompareRequest, request: Request) -> CompareResponse:
     """Analyse several sites under identical mission, vehicle and constraints."""
     return _service(request).compare(body)
+
+
+@router.post("/calendar", response_model=planning_schemas.CalendarResponse)
+def calendar(body: planning_schemas.CalendarRequest, request: Request) -> planning_schemas.CalendarResponse:
+    """Metrics and feasibility for one mission length at many start dates."""
+    return planning_service.calendar_view(_service(request), body)
+
+
+@router.post("/insights", response_model=planning_schemas.InsightsResponse)
+def insights(body: AnalyzeRequest, request: Request) -> planning_schemas.InsightsResponse:
+    """Plain-language explanation of an analysis: events, joint windows, what blocked the worst outages."""
+    return planning_service.insights_view(_service(request), body)
+
+
+@router.post("/rescue", response_model=planning_schemas.RescueResponse)
+def rescue(body: planning_schemas.RescueRequest, request: Request) -> planning_schemas.RescueResponse:
+    """Smallest single change (mast, antenna, date or nearby point) that makes the mission pass."""
+    return planning_service.rescue_view(_service(request), body)
 
 
 @router.get("/data-provenance")

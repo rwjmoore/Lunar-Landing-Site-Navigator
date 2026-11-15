@@ -14,6 +14,7 @@ Description: Bridges the HTTP layer and the physics core (M3).
 
 import json
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -30,12 +31,14 @@ from app.physics.horizon import (
     SiteTerrain,
     load_sites,
 )
+from app.physics.point_terrain import REGION_DIR, PointTerrain, coverage_latitude_deg
 from app.planning.constraints import Constraint
-from app.terrain.grid import polar_stereo_forward
+from app.terrain.grid import TerrainGrid, polar_stereo_forward
 
 from app.api import schemas
 
-SITE_MATCH_TOLERANCE_M = 100.0
+SITE_MATCH_TOLERANCE_M = 100.0   # within this of a curated site, its precomputed terrain is used
+MAX_CACHED_POINTS = 16           # custom points kept in memory (each caches horizons per height)
 LOW_MAST_NOTE_BELOW_M = 1.0  # see docs/physics/validation.md section 9.2
 _PROVENANCE_MANIFESTS = ("kernels.json", "terrain.json", "validation.json")
 
@@ -75,6 +78,8 @@ class AnalysisService:
     sites: dict[str, SiteInfo] = field(default_factory=dict)
     terrains: dict[str, SiteTerrain] = field(default_factory=dict)
     load_errors: dict[str, str] = field(default_factory=dict)
+    region: TerrainGrid | None = None   # 40 m map of 80-90 S: enables custom points anywhere in coverage
+    points: OrderedDict = field(default_factory=OrderedDict)  # recently used custom points (LRU)
 
     @classmethod
     def load(cls) -> "AnalysisService":
@@ -89,6 +94,10 @@ class AnalysisService:
             service.terrains = {sid: SiteTerrain.load(s) for sid, s in service.sites.items()}
         except (OSError, KeyError, ValueError) as exc:
             service.load_errors["terrain"] = str(exc)
+        try:
+            service.region = TerrainGrid.load(REGION_DIR)  # memory-mapped: only touched pages are read
+        except (OSError, KeyError, ValueError) as exc:
+            service.load_errors["region_terrain"] = str(exc)
         return service
 
     # -- status ------------------------------------------------------------
@@ -98,6 +107,7 @@ class AnalysisService:
             "sky_grid": "loaded" if self.sky is not None else "missing",
             "sites": f"{len(self.sites)} loaded" if self.sites else "missing",
             "terrain": f"{len(self.terrains)} sites loaded" if self.terrains else "missing",
+            "region_terrain": "loaded (custom points enabled)" if self.region is not None else "missing",
         }
 
     def _require_ready(self) -> None:
@@ -124,13 +134,11 @@ class AnalysisService:
             supported_end_utc=format_utc(self.sky.utc_end),
             sample_step_seconds_multiple=self.sky.step_s,
             vehicle_height_range_m=[0.0, MAX_OBSERVER_HEIGHT_M],
+            custom_points_available=self.region is not None,
+            custom_point_north_edge_latitude_deg=round(coverage_latitude_deg(), 4) if self.region is not None else None,
         )
 
-    def match_site(self, request: schemas.SiteRequest) -> SiteInfo:
-        """Nearest supported site within SITE_MATCH_TOLERANCE_M, else SiteUnavailable."""
-        if request.latitude_deg > -88.0:
-            raise SiteUnavailable("only south-pole sites near 88-90 S are supported",
-                                  supported=self._site_list())
+    def _nearest_site(self, request: schemas.SiteRequest) -> tuple[SiteInfo | None, float]:
         x, y = polar_stereo_forward(np.radians(request.latitude_deg), np.radians(request.longitude_deg_east))
         best, best_distance = None, np.inf
         for site in self.sites.values():
@@ -138,14 +146,36 @@ class AnalysisService:
             distance = float(np.hypot(x - sx, y - sy))
             if distance < best_distance:
                 best, best_distance = site, distance
-        if best is None or best_distance > SITE_MATCH_TOLERANCE_M:
+        return best, best_distance
+
+    def terrain_for(self, request: schemas.SiteRequest):
+        """Terrain for a requested location: a curated site if within SITE_MATCH_TOLERANCE_M
+        (precomputed, fastest), otherwise an on-demand point anywhere in the covered area."""
+        site, distance = self._nearest_site(request)
+        if site is not None and distance <= SITE_MATCH_TOLERANCE_M:
+            return self.terrains[site.id]
+        if self.region is None:
             raise SiteUnavailable(
-                f"no supported site within {SITE_MATCH_TOLERANCE_M:g} m of the requested coordinates",
-                nearest_site=None if best is None else best.id,
-                nearest_distance_m=None if best is None else round(best_distance, 1),
-                supported=self._site_list(),
-            )
-        return best
+                f"no supported site within {SITE_MATCH_TOLERANCE_M:g} m of the requested coordinates, and custom "
+                "points are not available on this server",
+                nearest_site=None if site is None else site.id,
+                nearest_distance_m=None if site is None else round(distance, 1), supported=self._site_list())
+        key = (round(request.latitude_deg, 6), round(request.longitude_deg_east % 360.0, 6))
+        if key not in self.points:
+            try:
+                self.points[key] = self.make_point(*key)
+            except ValueError as exc:
+                raise SiteUnavailable(f"these coordinates are {exc}", supported=self._site_list(),
+                                      custom_point_north_edge_latitude_deg=round(coverage_latitude_deg(), 4)) from exc
+            while len(self.points) > MAX_CACHED_POINTS:
+                self.points.popitem(last=False)
+        self.points.move_to_end(key)
+        return self.points[key]
+
+    def make_point(self, latitude_deg: float, longitude_deg_east: float) -> PointTerrain:
+        """An on-demand point (raises ValueError outside coverage)."""
+        return PointTerrain.at(latitude_deg, longitude_deg_east, self.region,
+                               {sid: t.near_grid for sid, t in self.terrains.items()})
 
     def _site_list(self) -> list[dict]:
         return [{"id": s.id, "name": s.name, "latitude_deg": s.latitude_deg,
@@ -166,15 +196,15 @@ class AnalysisService:
 
     def _candidate(self, site_req, mission, vehicle_req, constraints_req) -> schemas.Candidate:
         self._require_ready()
-        site = self.match_site(site_req)
+        terrain = self.terrain_for(site_req)
         window = self._window(mission)
         vehicle = Vehicle(vehicle_req.solar_panel_mast_height_m, vehicle_req.antenna_height_m)
         constraints = _constraints(constraints_req)
         try:
-            assessment = analyze(self.terrains[site.id], self.sky, window, vehicle, constraints)
+            assessment = analyze(terrain, self.sky, window, vehicle, constraints)
         except SkyGridRangeError as exc:
             raise MissionOutOfRange(str(exc), **self._supported_range()) from exc
-        return self._to_contract(site, site_req, assessment, constraints, vehicle_req, mission)
+        return self._to_contract(terrain, site_req, assessment, constraints, vehicle_req, mission)
 
     def _window(self, mission: schemas.MissionRequest) -> MissionWindow:
         try:
@@ -188,7 +218,8 @@ class AnalysisService:
                 "supported_end_utc": format_utc(self.sky.utc_end),
                 "sample_step_seconds_multiple": self.sky.step_s}
 
-    def _to_contract(self, site, site_req, a: Assessment, constraints, vehicle_req, mission) -> schemas.Candidate:
+    def _to_contract(self, terrain, site_req, a: Assessment, constraints, vehicle_req, mission) -> schemas.Candidate:
+        site = terrain.site
         if (a.sun_visible == UNKNOWN).any() or (a.earth_visible == UNKNOWN).any():
             # Contract v1 visibility is boolean and cannot express "unknown";
             # never report unknown as visible or obstructed (PROJECT_PLAN.md 7.2).
@@ -219,9 +250,9 @@ class AnalysisService:
                 earth_azimuth_deg=_deg(a.sky.earth_azimuth), earth_elevation_deg=_deg(a.sky.earth_elevation),
                 earth_visible=(a.earth_visible == 1).tolist(),
             ),
-            diagnostics=_diagnostics(site, a, constraints, vehicle_req),
+            diagnostics=_diagnostics(site, a, constraints, vehicle_req) + _detail_note(terrain),
             provenance=schemas.Provenance(
-                dem_id=f"LOLA 5 m {site.id} DEM + LDEM_80S_40MPP_ADJ (data/manifests/terrain.json)",
+                dem_id=_dem_id(terrain),
                 ephemeris_id="DE421 sky grid 2026-2040, hourly (data/manifests/kernels.json)",
                 sample_step_seconds=mission.sample_step_seconds,
             ),
@@ -256,6 +287,26 @@ class AnalysisService:
                              "docs/physics/terrain.md", "docs/physics/horizon.md", "docs/metrics.md",
                              "docs/physics/validation.md"],
         }
+
+
+def _dem_id(terrain) -> str:
+    detail = getattr(terrain, "detail", None)
+    if detail is None:  # curated site
+        return f"LOLA 5 m {terrain.site.id} DEM + LDEM_80S_40MPP_ADJ (data/manifests/terrain.json)"
+    if detail == "high":
+        return "LOLA 5 m site map + LDEM_80S_40MPP_ADJ, computed on demand (data/manifests/terrain.json)"
+    return "LOLA LDEM_80S_40MPP_ADJ 40 m, computed on demand: standard detail (data/manifests/terrain.json)"
+
+
+def _detail_note(terrain) -> list[str]:
+    detail = getattr(terrain, "detail", None)
+    if detail == "standard":
+        return ["Standard detail: this point is outside the 5 m maps, so its horizon uses 40 m terrain "
+                "(validated against NASA's maps, docs/physics/validation.md). Bumps smaller than about 40 m near "
+                "the lander are not resolved, so mast-height effects from nearby terrain are less certain."]
+    if detail == "high":
+        return ["Custom point inside a 5 m map: high-detail terrain, computed on demand."]
+    return []
 
 
 def _constraints(req: schemas.ConstraintsRequest) -> list[Constraint]:

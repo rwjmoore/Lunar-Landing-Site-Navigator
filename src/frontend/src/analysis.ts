@@ -251,6 +251,15 @@ export interface SiteCatalog {
   sites: Site[]
   /** The backend's published distance within which requested coordinates match a site. */
   toleranceM: number
+  /** If the backend analyses any coordinates on demand: the covered area's northern edge
+   *  (points must lie south of it, e.g. -86.7). Null when custom points are unavailable. */
+  customNorthEdgeDeg: number | null
+}
+
+/** True if the backend can analyse this point on demand (inside its covered area, away from the pole). */
+export function inCoverage(catalog: SiteCatalog, point: Omit<Site, 'name'>) {
+  return catalog.customNorthEdgeDeg !== null && point.latitude_deg <= catalog.customNorthEdgeDeg
+    && point.latitude_deg >= -89.999
 }
 
 function readSiteList(value: unknown): Site[] {
@@ -266,7 +275,9 @@ function readSiteList(value: unknown): Site[] {
 export function readSiteCatalog(value: unknown): SiteCatalog {
   const body = object(value, 'site catalog')
   requireField(isNumber(body.site_match_tolerance_m) && body.site_match_tolerance_m > 0, 'site match tolerance')
-  return { sites: readSiteList(body.sites), toleranceM: body.site_match_tolerance_m }
+  const edge = body.custom_points_available === true && inRange(body.custom_point_north_edge_latitude_deg, -90, -80)
+    ? body.custom_point_north_edge_latitude_deg as number : null
+  return { sites: readSiteList(body.sites), toleranceM: body.site_match_tolerance_m, customNorthEdgeDeg: edge }
 }
 
 /** Surface distance between two locations on the 1737.4 km reference sphere, in metres. */

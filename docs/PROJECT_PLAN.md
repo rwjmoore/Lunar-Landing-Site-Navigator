@@ -365,7 +365,7 @@ Do not assume increasing mast height always makes an infeasible mission feasible
 
 Use typed JSON API responses; keep offline JSON fixtures for UI development and a deterministic demo. The following is the **proposed contract**; update both ends together if changed.
 
-**Site addressing (decided):** requests identify sites by **latitude/longitude**, not by a site id, so new sites can be added later without a contract change. Because only precomputed sites are supported (§8.1), the API matches the requested coordinates to a supported site within a documented tolerance and returns a documented `unavailable` error otherwise. `GET /sites` lists the supported coordinates.
+**Site addressing (decided):** requests identify sites by **latitude/longitude**, not by a site id, so new sites can be added later without a contract change. Requests within 100 m of a curated site use its precomputed terrain; other points south of 86.70°S are computed on demand (§8.1); points outside that area return a documented `unavailable` error. `GET /sites` lists the supported coordinates.
 
 ### API endpoints
 
@@ -481,6 +481,8 @@ The `<5 s` target applies to a documented standard workload, e.g. 2 supported pr
 The app is hosted publicly.
 
 **Decision: south pole first, curated sites (2026-11-14).** The API supports a curated set of precomputed south-pole sites, built from locally hosted LOLA terrain (about 1 GB of source data, see `docs/physics/terrain.md`). Custom coordinates anywhere on the Moon are a **planned later expansion**, also through locally hosted terrain, not live third-party queries.
+
+**Decision update: custom south-polar points (option B, 2026-11-14; pending review in `docs/physics/custom_points.md`).** The server also hosts the **40 m regional map** (882 MB, memory-mapped) and computes horizons on demand for **any point south of 86.70°S** (so every 200 km ray stays inside the map): high detail inside the four 5 m site maps, standard detail (the NASA-validated comparison A configuration) elsewhere. Curated sites keep their precomputed horizons. Server disk grows from about 200 MB to about 1.1 GB. Coverage beyond 86.70°S remains the later expansion described below.
 
 **Notes for the later expansion** (investigated 2026-11-14):
 - The challenge suggests curated sites beyond the pole (Apollo, CLPS, other programs) and custom coordinates, as optional objectives.

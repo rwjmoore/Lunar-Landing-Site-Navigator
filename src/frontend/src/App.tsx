@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { analysisKey, candidateSite, coordinates, defaultSettings, formatUtc, initialSite, readAnalysis,
-  requestAnalysis, requestSites, sameSite, settingsKey, type Candidate, type Settings, type Site, type SiteCatalog,
+  inCoverage, requestAnalysis, requestSites, sameSite, settingsKey, type Candidate, type Settings, type Site, type SiteCatalog,
   type Vehicle } from './analysis'
 import { EdgeDrawers, MissionFields, VehicleFields, type Drawer } from './Configuration'
 import { HorizonView } from './HorizonView'
@@ -14,7 +14,7 @@ type Records = Record<string, Candidate>
 const apiUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
 // The backend accepts independent mast and antenna heights; set 'false' only for a backend that does not.
 const independentAntenna = import.meta.env.VITE_INDEPENDENT_ANTENNA !== 'false'
-const emptyCatalog: SiteCatalog = { sites: [], toleranceM: 0 }
+const emptyCatalog: SiteCatalog = { sites: [], toleranceM: 0, customNorthEdgeDeg: null }
 
 const fixtures = demoAnalysis.map(readAnalysis)
 const demoSites = fixtures.filter(candidate => candidate.vehicle.solar_panel_mast_height_m === 2).map(candidateSite)
@@ -109,8 +109,11 @@ export function App() {
     || (imported && sameSite(imported.candidate.location, site)))
   const unsupported = site.latitude_deg < -89.999 ? 'Polar waypoint selected. Terrain analysis and local azimuth are unavailable this close to the pole.'
     : 'Analysis unavailable at this waypoint. Terrain data is missing and visibility is unknown.'
+  const customPoint = !demo && !knownSite && !!apiUrl && inCoverage(catalog, site)
   const availability = demo ? (knownSite ? 'Demo waypoint selected. Open Horizon Analysis to inspect the illustrative scenario.' : 'Demo terrain is available at the two marked waypoints.')
-    : candidate ? 'Analysis loaded for the selected waypoint.' : knownSite && apiUrl ? 'Terrain coverage configured. Open Mission to run the analysis.' : unsupported
+    : candidate ? 'Analysis loaded for the selected waypoint.' : knownSite && apiUrl ? 'Terrain coverage configured. Open Mission to run the analysis.'
+      : customPoint ? 'Custom waypoint. Terrain is computed on demand (5 m detail near the marked sites, 40 m elsewhere); the first run takes a few seconds.'
+        : unsupported
   const panelMessage = message || (busy ? 'Running terrain analysis…' : demo && !candidate ? emptyDemo
     : stale ? 'Mission settings changed. Run a fresh analysis.' : catalogError || (source === 'Imported analysis'
       ? 'Loaded from a local file. Review its sources and timestamps.' : ''))
@@ -183,30 +186,32 @@ export function App() {
       if (!findDemo(selected, next)) setMessage(emptyDemo)
       return
     }
-    if (!verifiedSite || !apiUrl) {
-      setMessage(catalogError || (verifiedSite && !apiUrl ? 'The live analysis service is unavailable.'
-        : 'Analysis is unavailable for this waypoint. Select a supported site or load an analysis JSON file.'))
+    // A listed site, or any point the backend can analyse on demand (inside its covered area).
+    const target = verifiedSite ?? (inCoverage(catalog, point) ? point : undefined)
+    if (!target || !apiUrl) {
+      setMessage(catalogError || (target && !apiUrl ? 'The live analysis service is unavailable.'
+        : 'Analysis is unavailable for this waypoint: it is outside the covered area. Choose a point closer to the pole or load an analysis JSON file.'))
       return
     }
 
     const controller = new AbortController()
     activeOperation.current = controller
     setBusy(true)
-    const runKey = analysisKey(verifiedSite, next)
+    const runKey = analysisKey(target, next)
     try {
       let baseKey: string | undefined
       let baseResult: Candidate | undefined
       if (previousVehicle && previousVehicle.antenna_height_m === next.vehicle.antenna_height_m
         && previousVehicle.solar_panel_mast_height_m !== next.vehicle.solar_panel_mast_height_m) {
         const baseSettings = { ...next, vehicle: previousVehicle }
-        baseKey = analysisKey(verifiedSite, baseSettings)
+        baseKey = analysisKey(target, baseSettings)
         baseResult = analyses[baseKey]
         if (!baseResult) {
-          try { baseResult = await requestAnalysis(apiUrl, { site: verifiedSite, ...baseSettings }, controller.signal, catalog.toleranceM) }
+          try { baseResult = await requestAnalysis(apiUrl, { site: target, ...baseSettings }, controller.signal, catalog.toleranceM) }
           catch { if (controller.signal.aborted) return }
         }
       }
-      const result = await requestAnalysis(apiUrl, { site: verifiedSite, ...next }, controller.signal, catalog.toleranceM)
+      const result = await requestAnalysis(apiUrl, { site: target, ...next }, controller.signal, catalog.toleranceM)
       if (controller.signal.aborted) return
       const additions: Records = { [runKey]: result }
       if (baseResult && baseKey) {

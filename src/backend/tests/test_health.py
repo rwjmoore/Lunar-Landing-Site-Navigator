@@ -17,4 +17,4 @@ def test_health_reports_ok_version_and_datasets():
     body = response.json()
     assert body["status"] == "ok"
     assert body["version"] == __version__
-    assert set(body["datasets"]) == {"sky_grid", "sites", "terrain"}
+    assert set(body["datasets"]) == {"sky_grid", "sites", "terrain", "region_terrain"}

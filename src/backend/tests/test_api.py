@@ -118,7 +118,7 @@ def test_compare_uses_one_shared_mission(client):
 @pytest.mark.parametrize(
     "overrides, status, code",
     [
-        ({"site": {"latitude_deg": -89.0, "longitude_deg_east": 10.0}}, 404, "site_unavailable"),
+        ({"site": {"latitude_deg": -86.0, "longitude_deg_east": 10.0}}, 404, "site_unavailable"),  # outside coverage
         ({"site": {"latitude_deg": 10.0, "longitude_deg_east": 10.0}}, 404, "site_unavailable"),
         ({"mission": {**MISSION, "start_utc": "2030-11-20T12:30:00Z"}}, 422, "mission_out_of_range"),
         ({"mission": {**MISSION, "start_utc": "2045-01-01T00:00:00Z"}}, 422, "mission_out_of_range"),

@@ -13,10 +13,12 @@ FastAPI service that computes terrain-aware Sun/Earth line of sight and mission 
 | M2 Horizon, visibility, analysis | `app/physics/`, `pipeline/build_far_horizons.py` | [docs/physics/horizon.md](../../docs/physics/horizon.md) | Signed off |
 | Validation against NASA maps | `pipeline/validate_illumination.py` | [docs/physics/validation.md](../../docs/physics/validation.md) | Signed off |
 | M3 API | `app/api/` | [docs/API.md](../../docs/API.md) | — |
+| Planning tools: calendar, insights, rescue | `app/planning/`, `app/api/planning_*.py` | [docs/physics/planning.md](../../docs/physics/planning.md) | Signed off |
+| Custom points (on-demand horizons, south of 86.70°S) | `app/physics/point_terrain.py` | [docs/physics/custom_points.md](../../docs/physics/custom_points.md) | Signed off |
 
 ## Two halves: runtime and offline pipeline
 
-- **`app/`** is the hosted server. It needs only FastAPI, Pydantic and NumPy, and reads precomputed or built files: the sky grid and far horizons (committed) and the per-site terrain grids (built in setup).
+- **`app/`** is the hosted server. It needs only FastAPI, Pydantic and NumPy, and reads precomputed or built files: the sky grid and far horizons (committed) the per-site terrain grids and the 40 m regional map used for custom points (built in setup).
 - **`pipeline/`** is the offline data pipeline: downloads, SPICE, terrain conversion, validation. It needs the `pipeline` extra and is never installed on the server. See [PROJECT_PLAN.md §8.1](../../docs/PROJECT_PLAN.md).
 
 ## Setup
@@ -74,6 +76,8 @@ src/backend/
 │   ├── api/
 │   │   ├── routes.py       # HTTP endpoints (docs/API.md)
 │   │   ├── schemas.py      # Pydantic models = the frontend/backend JSON contract + requests
+│   │   ├── planning_schemas.py # models for /calendar, /insights, /rescue
+│   │   ├── planning_service.py # serves the planning endpoints
 │   │   └── service.py      # site matching, analysis, Assessment -> contract mapping
 │   ├── astronomy/
 │   │   └── sky.py          # sky grid loading, mission sampling, topocentric Sun/Earth az/el
@@ -83,6 +87,7 @@ src/backend/
 │   │   └── grid.py         # polar stereographic projection, TerrainGrid, bilinear height lookup
 │   ├── physics/
 │   │   ├── horizon.py      # ray casting, far-field candidates, per-height horizon (cached)
+│   │   ├── point_terrain.py # on-demand horizons for custom points (high / standard detail)
 │   │   ├── visibility.py   # Sun/Earth vs horizon: visible / obstructed / unknown
 │   │   └── analysis.py     # one-call analysis -> Assessment
 │   ├── metrics/
@@ -90,7 +95,10 @@ src/backend/
 │   │   ├── visibility.py   # VisibleFraction, LongestOutage (reused for Sun and Earth)
 │   │   └── registry.py     # the explicit list of active metrics
 │   └── planning/
-│       └── constraints.py  # constraints by metric id, margins, feasibility
+│       ├── constraints.py  # constraints by metric id, margins, feasibility
+│       ├── calendar.py     # metrics for every start date at once (date-flexibility calendar)
+│       ├── insights.py     # events, time to next change, joint windows, outage explanations
+│       └── rescue.py       # smallest single change: mast, antenna, date, nearby point (on demand)
 ├── pipeline/               # offline only (SpiceyPy, rasterio, pyproj, matplotlib)
 │   ├── fetch_data.py       # downloads data/manifests/ files with checksum verification
 │   ├── checksums.py        # SHA-256 verification against data/manifests/
@@ -106,6 +114,8 @@ src/backend/
 ├── tests/
 │   ├── test_health.py
 │   ├── test_api.py         # /sites, /analyze, /compare, errors, provenance (real data)
+│   ├── test_planning.py    # calendar vs /analyze, run-finder vs brute force, rescue minimality, endpoints
+│   ├── test_custom_points.py # on-demand points vs curated sites, step halving, coverage, nearby rescue
 │   ├── test_fetch_data.py  # download, skip and corrupted-download handling
 │   ├── test_contract.py    # validates docs/frontend-backend_interface.json against schemas.py
 │   ├── test_frames.py

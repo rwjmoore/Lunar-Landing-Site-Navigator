@@ -13,7 +13,10 @@ For a candidate landing site near the lunar south pole, a mission window and a v
 - **when the Sun and Earth are visible** above the terrain;
 - **mission metrics**: sunlight fraction, longest darkness, Earth-visibility fraction, longest Earth blackout;
 - a **feasibility verdict** against your limits, with margins and the timing of the worst outages;
-- side-by-side **comparison** of several sites under identical assumptions.
+- side-by-side **comparison** of several sites under identical assumptions;
+- a **date-flexibility calendar**: the same mission evaluated at every possible start date from 2026 to 2040;
+- **plain-language explanations**: when the Sun next sets, when the Sun and Earth are visible together, and what terrain (direction, distance, location) caused the worst outages, including whether it's the Moon's own curvature that no fix can beat;
+- **mission rescue**: the smallest single change (taller mast, taller antenna, earlier or later start, or a nearby point) that makes a failing mission pass.
 
 Raising the solar mast changes the horizon, not the Sun: at some sites going from a 2 m to a 10 m mast lifts sunlight from 47% to 85% of the year. Showing trade-offs like that is the point of the tool.
 
@@ -23,10 +26,11 @@ Raising the solar mast changes the horizon, not the Sun: at some sites going fro
 |---|---|
 | Physics core (frames, Sun/Earth ephemeris, terrain, horizon, visibility, metrics) | Done, reviewed, and **validated against NASA's published south-pole illumination maps** (mean difference 0.1 percentage points, correlation 0.99) |
 | Backend API (`/sites`, `/analyze`, `/compare`, `/data-provenance`) | Done ([docs/API.md](docs/API.md)) |
+| Planning tools (`/calendar`, `/insights`, `/rescue`) | Backend done and signed off ([docs/physics/planning.md](docs/physics/planning.md)); not yet in the UI |
 | Frontend ("LunarSight": map, 360° horizon, comparison) | Working against the live API; in active development (`src/frontend/`) |
 | Deployment | Not yet |
 
-Supported today: **four curated south-pole sites**, mission dates **2026–2040**, mast and antenna heights **0–20 m**. See `GET /sites` for exact coordinates.
+Supported today: **four curated south-pole sites** plus **custom points anywhere south of 86.70°S** (computed on demand from the 40 m terrain map; [docs/physics/custom_points.md](docs/physics/custom_points.md)), mission dates **2026–2040**, mast and antenna heights **0–20 m**. See `GET /sites` for exact coordinates.
 
 ## Repository layout
 
@@ -233,6 +237,7 @@ None of this is needed to run the API. Each step is described in its physics exp
 | [docs/physics/terrain.md](docs/physics/terrain.md) | LOLA terrain ingest and the demo sites |
 | [docs/physics/horizon.md](docs/physics/horizon.md) | Horizon ray casting and visibility |
 | [docs/physics/validation.md](docs/physics/validation.md) | Validation against NASA's published illumination maps |
+| [docs/physics/planning.md](docs/physics/planning.md) | Date calendar, explanations and mission rescue |
 | [src/backend/README.md](src/backend/README.md) | Backend layout and developer commands |
 
 Every physics component has an explainer with equations, assumptions, test evidence and a review sign-off. Changes to a signed-off component need a new review.

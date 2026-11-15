@@ -240,6 +240,10 @@ class SitesResponse(ContractModel):
     supported_end_utc: str
     sample_step_seconds_multiple: int
     vehicle_height_range_m: list[float]
+    custom_points_available: bool = Field(
+        default=False, description="True if any coordinates in the covered area can be analysed on demand")
+    custom_point_north_edge_latitude_deg: float | None = Field(
+        default=None, description="Custom points must lie south of this latitude (e.g. -86.7)")
 
 
 def _require_equal_lengths(**arrays: list) -> None:
