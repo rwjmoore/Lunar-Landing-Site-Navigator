@@ -1,3 +1,5 @@
+<p align="center"><img src="src/frontend/src/assets/lunarsight.svg" alt="LunarSight logo: a telescope beneath the Moon" width="320"></p>
+
 # Lunar Landing Site Navigator
 
 An explainable, terrain-aware lunar mission planning tool. Understand why a lunar landing mission fails its sunlight or communication requirements, and discover changes that could make it feasible.
