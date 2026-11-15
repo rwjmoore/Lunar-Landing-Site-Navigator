@@ -121,6 +121,39 @@ lunar-landing-site-navigator/
 
 See docs/frontend-backend_interface.json for the interface
 
+### Domain model
+
+The backend separates **user inputs**, the reusable **physical environment**, and **derived results**. Each layer has its own cache key, so recomputation is limited to what actually changed.
+
+```text
+Inputs (user-selected)
+  Site              name, latitude_deg, longitude_deg_east, terrain artifact reference
+  MissionWindow     start_utc, duration_hours, sample_step_seconds
+  Vehicle           solar_panel_mast_height_m, antenna_height_m (see §5.7)
+  Constraints       max_darkness_hours, max_earth_blackout_hours
+  MissionCandidate  = Site + MissionWindow + Vehicle (+ display name)
+
+Environment (physical, constraint-free, cacheable)
+  HorizonProfile    (site, observer_height, DEM version, params) → azimuth_deg[], elevation_deg[],
+                    source_range_m[], source_tier[], no_data[]
+  SkyTrack          (site, mission window) → timestamps, sun_az/el[], earth_az/el[]
+  Environment       = SkyTrack + HorizonProfile lookup for a given observer height
+
+Results (derived)
+  Visibility        (HorizonProfile, SkyTrack) → sun_visible[], earth_visible[] (true/false/unknown)
+  Assessment        (MissionCandidate, Constraints) → metrics, feasibility, margins, diagnostics
+```
+
+Rules:
+
+- **Terrain is static, sky is time-varying, metrics are aggregates.** Metrics (§5.5) are properties of an Assessment over a mission window, not of a location.
+- **The horizon depends on observer height**, so it is keyed by height. Solar and Earth visibility may use different `HorizonProfile`s (mast vs antenna height).
+- **Time series are stored as parallel arrays** (one NumPy array per quantity), never as lists of per-timestamp objects. This matches the API contract.
+- **Baseline vs modified vehicle (R7)** = two Assessments that share one `SkyTrack` and differ only in `HorizonProfile`.
+- **Comparison (R5)** = a list of Assessments built from one shared `MissionWindow` and `Constraints`, enforced by construction rather than by convention.
+- **Changing constraints** re-runs only the Assessment step; Environment and Visibility are reused.
+- Domain objects live in the numerical core (`physics/`, `planning/`) and are independent of FastAPI; `api/` maps an Assessment to the response contract (whose `candidate` object combines inputs and results for frontend convenience).
+
 ## 5. Core scientific model
 
 ### 5.1 Coordinate and time conventions — lock before implementation
