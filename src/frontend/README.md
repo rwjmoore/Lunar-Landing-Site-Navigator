@@ -32,15 +32,22 @@ pnpm run build
 
 ## Live data integration
 
-This checkout serves `/health`. When the backend provides `POST /analyze`, configure the deployed frontend at build time or put these variables in `.env.local` for development.
+The backend (see the [root README](../../README.md) and [docs/API.md](../../docs/API.md)) serves `GET /sites` and `POST /analyze`. Configure the frontend at build time, or put these variables in `.env.local` for development.
 
 | Variable | Value |
 | --- | --- |
-| `VITE_API_BASE_URL` | The API base URL, or `/` for an API on the same origin. |
-| `VITE_SUPPORTED_SITES` | A JSON array of prepared backend sites, each with `name`, `latitude_deg`, and `longitude_deg_east`. Leave the array empty until terrain coverage is confirmed. |
-| `VITE_INDEPENDENT_ANTENNA` | Set to `true` when the API supports independently changing antenna height. |
+| `VITE_API_BASE_URL` | The API base URL, e.g. `http://127.0.0.1:8000`, or `/` for an API on the same origin. |
+| `VITE_INDEPENDENT_ANTENNA` | Optional. The antenna height can be changed independently by default; set `false` only for a backend that does not support it. |
 
-Provide CORS access for the frontend origin when serving the API separately. The frontend sends the plan's coordinate-based request and checks the response against the requested location, UTC samples, cadence, and vehicle. The mast comparison uses two analyses with the same mission and constraints. A live site comparison runs one `/analyze` request per prepared site with identical settings. The `/sites` and `/compare` response schemas are pending.
+On startup the frontend loads the supported sites from `GET /sites`, so their coordinates always match the backend's terrain data; no site list needs configuring. If the list can't be loaded, the map shows why. When serving the API on another origin, start it with `LLSN_CORS_ORIGINS` set to the frontend's origin (e.g. `http://localhost:5173`).
+
+The frontend sends the plan's coordinate-based request and checks the response against the requested location (within the backend's published site-match tolerance), UTC samples, cadence, and vehicle. When the API rejects a request, its own explanation is shown, e.g. why a mission is out of range. The mast comparison uses two analyses with the same mission and constraints. A live site comparison runs one `/analyze` request per supported site with identical settings.
+
+### Testing against a local backend
+
+1. Start the backend from `src/backend` (PowerShell): `$env:LLSN_CORS_ORIGINS="http://localhost:5173"; .venv\Scripts\python -m uvicorn app.main:app`
+2. Create `src/frontend/.env.local` containing `VITE_API_BASE_URL=http://127.0.0.1:8000`.
+3. Start the frontend as above and open the printed URL. The four supported sites appear on the map; select one and run the mission.
 
 ## Basemap provenance
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { analysisKey, candidateSite, coordinates, defaultSettings, formatUtc, initialSite, readAnalysis, readSupportedSites,
-  requestAnalysis, sameSite, settingsKey, type Candidate, type Settings, type Site, type Vehicle } from './analysis'
+import { analysisKey, candidateSite, coordinates, defaultSettings, formatUtc, initialSite, readAnalysis,
+  requestAnalysis, requestSites, sameSite, settingsKey, type Candidate, type Settings, type Site, type SiteCatalog,
+  type Vehicle } from './analysis'
 import { EdgeDrawers, MissionFields, VehicleFields, type Drawer } from './Configuration'
 import { HorizonView } from './HorizonView'
 import { MapView, type Sector } from './MapView'
@@ -11,11 +12,9 @@ import demoAnalysis from './data/demo.json'
 type View = 'map' | 'horizon' | 'rankings'
 type Records = Record<string, Candidate>
 const apiUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
-const independentAntenna = import.meta.env.VITE_INDEPENDENT_ANTENNA === 'true'
-let configuredSites: Site[] = []
-let catalogError = ''
-try { configuredSites = readSupportedSites(import.meta.env.VITE_SUPPORTED_SITES) }
-catch { catalogError = 'The supported site list could not be read. Check the frontend configuration.' }
+// The backend accepts independent mast and antenna heights; set 'false' only for a backend that does not.
+const independentAntenna = import.meta.env.VITE_INDEPENDENT_ANTENNA !== 'false'
+const emptyCatalog: SiteCatalog = { sites: [], toleranceM: 0 }
 
 const fixtures = demoAnalysis.map(readAnalysis)
 const demoSites = fixtures.filter(candidate => candidate.vehicle.solar_panel_mast_height_m === 2).map(candidateSite)
@@ -58,7 +57,11 @@ const emptyDemo = 'Demo data is available for two waypoints over 14 days startin
 
 export function App() {
   const [view, setView] = useState<View>('map')
-  const [site, setSite] = useState<Site>(configuredSites[0] ?? initialSite)
+  const [site, setSite] = useState<Site>(initialSite)
+  // Supported sites come from the backend's GET /sites, so their coordinates always match its terrain data.
+  const [catalog, setCatalog] = useState<SiteCatalog>(emptyCatalog)
+  const [catalogError, setCatalogError] = useState('')
+  const configuredSites = catalog.sites
   const [settings, setSettings] = useState(defaultSettings)
   const [demo, setDemo] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -76,6 +79,21 @@ export function App() {
   const savedState = useRef<{ site: Site; settings: Settings; view: View; index: number } | null>(null)
 
   useEffect(() => () => activeOperation.current?.abort(), [])
+
+  useEffect(() => {
+    if (!apiUrl) return
+    const controller = new AbortController()
+    requestSites(apiUrl, controller.signal).then(loaded => {
+      setCatalog(loaded)
+      // Start on a real supported site instead of the placeholder waypoint.
+      if (loaded.sites.length) setSite(current => sameSite(current, initialSite) ? loaded.sites[0] : current)
+    }).catch(error => {
+      if (!controller.signal.aborted) {
+        setCatalogError(`The supported site list could not be loaded. ${error instanceof Error ? error.message : ''}`.trim())
+      }
+    })
+    return () => controller.abort()
+  }, [])
 
   const sites = demo ? demoSites : configuredSites
   const knownSite = sites.find(item => sameSite(item, site))
@@ -184,11 +202,11 @@ export function App() {
         baseKey = analysisKey(verifiedSite, baseSettings)
         baseResult = analyses[baseKey]
         if (!baseResult) {
-          try { baseResult = await requestAnalysis(apiUrl, { site: verifiedSite, ...baseSettings }, controller.signal) }
+          try { baseResult = await requestAnalysis(apiUrl, { site: verifiedSite, ...baseSettings }, controller.signal, catalog.toleranceM) }
           catch { if (controller.signal.aborted) return }
         }
       }
-      const result = await requestAnalysis(apiUrl, { site: verifiedSite, ...next }, controller.signal)
+      const result = await requestAnalysis(apiUrl, { site: verifiedSite, ...next }, controller.signal, catalog.toleranceM)
       if (controller.signal.aborted) return
       const additions: Records = { [runKey]: result }
       if (baseResult && baseKey) {
@@ -213,15 +231,17 @@ export function App() {
     setMessage('')
     try {
       const outcomes = await Promise.allSettled(configuredSites.map(async location => {
-        const result = await requestAnalysis(apiUrl, { site: location, ...settings }, controller.signal)
+        const result = await requestAnalysis(apiUrl, { site: location, ...settings }, controller.signal, catalog.toleranceM)
         return [analysisKey(location, settings), result] as const
       }))
       if (controller.signal.aborted) return
       const analysesLoaded = outcomes.flatMap(outcome => outcome.status === 'fulfilled' ? [outcome.value] : [])
       setAnalyses(values => ({ ...values, ...Object.fromEntries(analysesLoaded) }))
       if (analysesLoaded.length < configuredSites.length) {
-        setMessage(analysesLoaded.length === 0 ? 'No comparison results loaded. Try again when the analysis service is available.'
-          : `${analysesLoaded.length} of ${configuredSites.length} sites returned results. Run the comparison again to retry.`)
+        const failure = outcomes.find(outcome => outcome.status === 'rejected')
+        const reason = failure?.status === 'rejected' && failure.reason instanceof Error ? ` ${failure.reason.message}` : ''
+        setMessage(analysesLoaded.length === 0 ? `No comparison results loaded.${reason}`
+          : `${analysesLoaded.length} of ${configuredSites.length} sites returned results.${reason}`)
       }
     } finally {
       if (activeOperation.current === controller) { activeOperation.current = null; setBusy(false) }

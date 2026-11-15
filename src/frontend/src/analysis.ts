@@ -247,30 +247,83 @@ export function readAnalysis(value: unknown): Candidate {
   }
 }
 
-export function readSupportedSites(value: string | undefined) {
-  if (!value) return []
-  const sites: unknown = JSON.parse(value)
-  if (!Array.isArray(sites)) throw new Error('VITE_SUPPORTED_SITES must be a JSON array.')
-  const result = sites.map(readSite)
+export interface SiteCatalog {
+  sites: Site[]
+  /** The backend's published distance within which requested coordinates match a site. */
+  toleranceM: number
+}
+
+function readSiteList(value: unknown): Site[] {
+  const result = array(value, (item): item is unknown => true, 'site list').map(readSite)
   if (result.some((site, i) => site.latitude_deg < -89.999 || site.latitude_deg > -80
     || result.slice(0, i).some(other => sameSite(site, other)))) {
-    throw new Error('Configure distinct supported sites between 89.999°S and 80°S.')
+    throw new Error('The service listed sites outside 89.999°S to 80°S, or duplicate sites.')
   }
   return result
 }
 
-export async function requestAnalysis(base: string, request: AnalysisRequest, signal: AbortSignal) {
-  const reply = await fetch(`${base.replace(/\/+$/, '')}/analyze`, {
+/** Reads the body of GET /sites (docs/API.md). Extra fields are ignored. */
+export function readSiteCatalog(value: unknown): SiteCatalog {
+  const body = object(value, 'site catalog')
+  requireField(isNumber(body.site_match_tolerance_m) && body.site_match_tolerance_m > 0, 'site match tolerance')
+  return { sites: readSiteList(body.sites), toleranceM: body.site_match_tolerance_m }
+}
+
+/** Surface distance between two locations on the 1737.4 km reference sphere, in metres. */
+export function surfaceDistanceM(a: Omit<Site, 'name'>, b: Omit<Site, 'name'>) {
+  const rad = Math.PI / 180
+  const h = Math.sin((a.latitude_deg - b.latitude_deg) * rad / 2) ** 2
+    + Math.cos(a.latitude_deg * rad) * Math.cos(b.latitude_deg * rad)
+    * Math.sin((a.longitude_deg_east - b.longitude_deg_east) * rad / 2) ** 2
+  return 2 * 1_737_400 * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+/** Turns an error reply into a readable message, using the API's own explanation when it gives one. */
+async function replyError(reply: Response, action: string) {
+  let body: unknown
+  try { body = await reply.json() } catch { body = undefined }
+  const fields = typeof body === 'object' && body !== null ? body as Record<string, unknown> : {}
+  if (isString(fields.message) && fields.message.trim()) {
+    const text = fields.message.trim().replace(/\.$/, '')
+    return new Error(fields.error === 'site_unavailable'
+      ? `This waypoint is not a supported site: ${text}.`
+      : `${text.charAt(0).toUpperCase()}${text.slice(1)}.`)
+  }
+  if (Array.isArray(fields.detail)) {  // FastAPI request validation (422)
+    const problems = fields.detail.flatMap(item => typeof item === 'object' && item !== null
+      && isString((item as Record<string, unknown>).msg) ? [(item as Record<string, string>).msg] : [])
+    if (problems.length) return new Error(`The service rejected the ${action}: ${problems.join('; ')}.`)
+  }
+  return new Error(`The ${action} failed (${reply.status}). Try again.`)
+}
+
+async function send(url: string, init: RequestInit, action: string) {
+  try {
+    return await fetch(url, init)
+  } catch (error) {
+    if (init.signal?.aborted) throw error
+    throw new Error(`The analysis service could not be reached for the ${action}. Check that it is running.`)
+  }
+}
+
+export async function requestSites(base: string, signal: AbortSignal): Promise<SiteCatalog> {
+  const reply = await send(`${base.replace(/\/+$/, '')}/sites`, { signal }, 'site list')
+  if (!reply.ok) throw await replyError(reply, 'site list request')
+  return readSiteCatalog(await reply.json())
+}
+
+export async function requestAnalysis(base: string, request: AnalysisRequest, signal: AbortSignal, toleranceM: number) {
+  const reply = await send(`${base.replace(/\/+$/, '')}/analyze`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request), signal,
-  })
-  if (reply.status === 404 || reply.status === 501) throw new Error('Live analysis is unavailable. Try again when the analysis service is ready.')
-  if (!reply.ok) throw new Error(`The analysis request failed (${reply.status}). Try again.`)
+  }, 'analysis')
+  if (!reply.ok) throw await replyError(reply, 'analysis request')
   const candidate = readAnalysis(await reply.json())
   const { mission, vehicle } = request
   const times = candidate.series.timestamps_utc
   const expectedCount = Math.floor(mission.duration_hours * 3600 / mission.sample_step_seconds) + 1
   const start = Date.parse(mission.start_utc)
-  if (!sameSite(candidate.location, request.site)
+  // The backend answers with its supported site's exact coordinates, matched within its published tolerance.
+  if (surfaceDistanceM(candidate.location, request.site) > toleranceM
     || candidate.vehicle.solar_panel_mast_height_m !== vehicle.solar_panel_mast_height_m
     || candidate.vehicle.antenna_height_m !== vehicle.antenna_height_m
     || candidate.provenance.sample_step_seconds !== mission.sample_step_seconds
