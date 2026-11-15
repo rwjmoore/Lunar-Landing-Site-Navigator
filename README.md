@@ -66,7 +66,7 @@ start.bat
 - **`setup.bat`** (once) installs the backend's Python environment, downloads and verifies NASA's terrain data (about 1 GB, 15–20 minutes the first time), builds the terrain grids, installs the frontend's Node.js and packages, and points the frontend at the local API. Re-running it is safe and takes about 20 seconds.
 - **`start.bat`** (every time) opens two windows, **LunarSight API** (http://127.0.0.1:8000) and **LunarSight Web** (http://localhost:5173), waits until both respond, then opens the app in your browser. **Close both windows to stop the app.** `start.bat nobrowser` starts without opening a browser.
 
-Requirements: Python 3.12+ on `PATH`, about 2.6 GB of disk, internet access for setup. Node.js does **not** need to be installed: setup downloads a checksum-verified copy into `src/frontend/.frontend-tools/`. For macOS/Linux, or to understand each step, follow the manual installation below.
+Requirements: Python 3.12+, about 2.6 GB of disk, internet access for setup. If several Pythons are installed, setup uses the **newest stable 3.12+** it finds via the Python launcher (`py -3`), `python` or `python3`, skipping alpha/beta/rc builds; `setup.bat --which-python` shows which one it would pick. An existing `src\backend\.venv` is reused; delete it to rebuild with a different Python. Node.js does **not** need to be installed: setup downloads a checksum-verified copy into `src/frontend/.frontend-tools/`. For macOS/Linux, or to understand each step, follow the manual installation below.
 
 ## Installation
 
