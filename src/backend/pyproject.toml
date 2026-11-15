@@ -20,8 +20,14 @@ dev = [
     "httpx>=0.27",  # required by FastAPI's TestClient
 ]
 
+pipeline = [
+    # Offline data pipeline only (scripts/); never installed on the hosted server.
+    "spiceypy>=6.0",
+    "matplotlib>=3.8",  # evidence plots for physics reviews
+]
+
 [tool.setuptools.packages.find]
-include = ["app*"]
+include = ["app*", "pipeline*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

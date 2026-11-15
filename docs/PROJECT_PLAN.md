@@ -106,7 +106,7 @@ lunar-landing-site-navigator/
 │       ├── views/             # Single site, comparison, optional map
 │       ├── api/               # Typed API client
 │       └── types/             # Shared contract types
-├── scripts/                   # Fetch, preprocess, validate and precompute
+├── src/backend/pipeline/      # Offline: fetch, preprocess, validate and precompute (not shipped)
 ├── data/                      # Small manifests/sample assets; large files ignored
 └── docs/                      # PROJECT_PLAN, conventions, assumptions, validation, demo
 ```
@@ -421,6 +421,45 @@ Use typed JSON API responses; keep offline JSON fixtures for UI development and 
 
 Never ship `null` or placeholder metric values as real analysis results. Return a documented error or `status: unavailable` if a requested site/time lacks supported data.
 
+**Request-side rules (decided):** sites are matched by lat/lon to a supported site; `start_utc` must be on a whole UTC hour; `sample_step_seconds` must be a whole number of hours; the mission must lie within 2026-01-01T00:00Z to 2040-12-31T23:00Z (`docs/physics/sky.md` §3).
+
+### 7.1 How the frontend draws the 360° terrain horizon
+
+The terrain skyline comes **only** from `candidate.horizons`. For each azimuth bin, the backend casts a ray outward up to 200 km and keeps the highest elevation angle of any terrain along it (§5.3): the dominant obstruction in that direction. The frontend never receives the terrain map itself, only this reduced skyline.
+
+| Field | Role in the plot | Units / meaning |
+|---|---|---|
+| `horizons.azimuth_deg` | x-axis: direction around the site | Degrees clockwise from north, `[0, 360)`, 1,440 bins at 0.25° |
+| `horizons.sun_observer_horizon_elevation_deg` | y-axis: skyline seen from the **solar mast** height | Degrees above the observer's local horizontal; may be negative |
+| `horizons.earth_observer_horizon_elevation_deg` | y-axis: skyline seen from the **antenna** height | Same |
+
+- Point `i` is `(azimuth_deg[i], *_horizon_elevation_deg[i])`; connecting the points around 0–360° draws the silhouette.
+- The two elevation arrays are the same terrain from two heights; they differ only through nearby terrain, and are identical when the heights are equal. Pair the Sun track with the solar-mast profile and the Earth track with the antenna profile.
+- Overlays come from `candidate.series`: `sun_azimuth_deg`/`sun_elevation_deg` and `earth_azimuth_deg`/`earth_elevation_deg` are the tracks; `sun_visible`/`earth_visible` are the per-timestamp results of comparing each track with its skyline.
+- The arrays are empty in the current fixture and are filled once M2 (horizon ray casting) exists.
+
+### 7.2 Proposed contract v2 (pending frontend agreement)
+
+> **Status: proposed, not implemented.** `docs/frontend-backend_interface.json` and `src/backend/app/api/schemas.py` stay unchanged until the frontend engineer agrees; then both change together with the contract test kept green.
+
+| # | Change | Why | Breaking? |
+|---|---|---|---|
+| 1 | Per-direction **no-data flags**: `horizons.sun_observer_no_data`, `horizons.earth_observer_no_data` (booleans, same length as `azimuth_deg`); where `true`, the matching elevation is `null` | Directions with missing terrain are unknown, never clear (§5.3), and must not be drawn as real horizon | No (additive) |
+| 2 | **Distance to the blocking terrain**: `horizons.sun_observer_obstruction_range_m`, `horizons.earth_observer_obstruction_range_m` (surface distance in metres, `null` where no-data) | Lets the UI say which terrain blocks the Sun/Earth (e.g. "terrain 42 km to the south-east"), shade the skyline by distance, and supports the P1 dominant-obstruction diagnostic | No (additive) |
+| 3 | **Unknown visibility**: `series.sun_visible` and `series.earth_visible` become `(boolean \| null)[]`, with `null` = unknown | The backend has three states (visible, obstructed, unknown; `docs/metrics.md` §3.2); booleans can't express the third | **Yes** |
+| 4 | **Baseline comparison** for R7: optional `baseline_vehicle` in the request; optional `candidate.baseline` in the response containing only what depends on vehicle height: `vehicle`, `metrics`, `feasibility`, `horizons`, `sun_visible`, `earth_visible` | Shows before/after for a mast or antenna change with a guaranteed identical mission window and constraints; Sun/Earth tracks aren't repeated because the sky doesn't depend on vehicle height | No (optional) |
+
+**Alternative for item 4:** no contract change; the frontend sends two `/analyze` requests and keeps the first as the baseline. Simpler for the backend, but the frontend must keep the mission window and constraints identical itself, and transfers roughly twice the data.
+
+**Possible later extension:** latitude/longitude of the blocking terrain point per direction, if the map view wants to mark it.
+
+**Questions for the frontend engineer:**
+
+1. Is `null` acceptable in the visibility arrays and horizon elevations for your plotting library, or would you prefer separate mask arrays with numeric placeholders?
+2. Item 4: one combined response (recommended) or two requests?
+3. Item 2 now or later?
+4. Anything else needed for the 360° horizon chart?
+
 ## 8. Performance and precomputation strategy
 
 The `<5 s` target applies to a documented standard workload, e.g. 2 supported preprocessed south-pole sites over a 14-day mission with hourly samples. Benchmark locally and in the deployed app. Distinguish cold vs warm runs.
@@ -446,7 +485,7 @@ SPICE kernels, rasterio/GDAL, GB-scale DEMs     FastAPI + Pydantic + NumPy only
         └──► small, versioned, checksummed artifacts ────┘
 ```
 
-All heavy dependencies, large downloads, and physics-review-gated computation run offline in `scripts/`. The server only loads precomputed artifacts and performs vectorized calculations.
+All heavy dependencies, large downloads, and physics-review-gated computation run offline in `src/backend/pipeline/` (the "pipeline" dependency extra; never installed on the server). The server only loads precomputed artifacts and performs vectorized calculations.
 
 **Artifacts:**
 

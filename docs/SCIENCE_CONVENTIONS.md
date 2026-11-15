@@ -81,14 +81,11 @@ For a relative vector `r = target − p`:
 - **Geometry:** topocentric. **LOCKED.** Implemented in two stages (see `PROJECT_PLAN.md` §8.1):
   - *Offline sky grid:* SPICE computes Moon-centered `SUN` and `EARTH` vectors in frame `MOON_ME`, aberration correction `LT+S`, on a fixed hourly UTC grid over the supported date range.
   - *Runtime:* topocentric vector = Moon-centered vector − observer MOON_ME position; then convert to (A, α) with §5.
-  - *Reference check:* the P2 gate compares this method against direct `spkcpo` queries at the observer position (same frame and correction). Acceptance tolerance **TO VERIFY (M1)**.
+  - *Reference check:* the P2 gate compares this method against direct `spkcpo` queries at the observer position (same frame and correction). Acceptance tolerance **0.001°** (approved; measured worst 2.7e-5°, see §11).
 - **Why topocentric matters:** Earth's lunar-radius parallax is ~0.26° (1737.4 / 384,400 rad), which is significant near the horizon. For the Sun it is negligible, but the same code path is used for consistency.
-- **Kernel set** (exact filenames and versions recorded in provenance): **TO VERIFY (M1)** against the NAIF generic kernels site.
-  - Leapseconds (LSK).
-  - Planetary ephemeris (SPK): DE440 or DE421.
-  - Lunar orientation: binary PCK for `MOON_PA` matching the chosen DE.
-  - Lunar frames kernel (FK) defining `MOON_ME` relative to `MOON_PA` for that DE.
-- **Validation:** 3–5 timestamps per demo site compared against Horizons (observer defined as a surface site on body 301). Record agreement in degrees. Acceptance threshold: **TO VERIFY (M1)**, expected ≤ 0.01°.
+- **Kernel set: DE421** (`naif0012.tls`, `de421.bsp`, `moon_pa_de421_1900-2050.bpc`, `moon_080317.tf`, `moon_assoc_me.tf`). **LOCKED**; checksums in `data/manifests/kernels.json`. DE421 was chosen because the LOLA DEMs use MOON_ME as realized by DE421.
+- **Supported dates:** whole UTC hours from 2026-01-01T00:00Z to 2040-12-31T23:00Z. Missions must start on a whole hour and step by whole hours. **LOCKED.**
+- **Validation:** Sun/Earth apparent az/el compared against JPL Horizons at test locations on body 301. Acceptance threshold **0.01°** (approved; measured worst 0.00003°, see §11). Explainer and evidence: `docs/physics/sky.md`.
 
 ## 9. Visibility model and metrics
 
@@ -113,4 +110,6 @@ Record each TO VERIFY resolution here: item, observed value, source, date, who v
 
 | Item | Observed | Source | Date | By |
 |---|---|---|---|---|
-| | | | | |
+| Kernel set (§8) | DE421: `naif0012.tls`, `de421.bsp`, `moon_pa_de421_1900-2050.bpc`, `moon_080317.tf`, `moon_assoc_me.tf`; checksums in `data/manifests/kernels.json` | NAIF generic kernels | 2026-11-14 | Claude (download), Randy Moore (DE421 approved; P2 signed off 2026-11-14) |
+| Ephemeris tolerances (§8) | Grid method vs SPICE at site: worst 2.7e-5° (tolerance 0.001°); vs JPL Horizons: worst 0.00003° (tolerance 0.01°) | `docs/physics/sky.md` §7.1 | 2026-11-14 | Claude (measured); tolerances approved by Randy Moore |
+| Frame realization (§3) | `moon_080317.tf` defines `MOON_ME` relative to `MOON_ME_DE421`, matching the LOLA DEM frame; no DE421/DE440 offset needed | `moon_080317.tf` frame definitions | 2026-11-14 | Claude |
