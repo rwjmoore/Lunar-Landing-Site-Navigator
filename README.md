@@ -23,7 +23,7 @@ Raising the solar mast changes the horizon, not the Sun: at some sites going fro
 |---|---|
 | Physics core (frames, Sun/Earth ephemeris, terrain, horizon, visibility, metrics) | Done, reviewed, and **validated against NASA's published south-pole illumination maps** (mean difference 0.1 percentage points, correlation 0.99) |
 | Backend API (`/sites`, `/analyze`, `/compare`, `/data-provenance`) | Done ([docs/API.md](docs/API.md)) |
-| Frontend | In progress by a separate engineer (`src/frontend/`) |
+| Frontend ("LunarSight": map, 360° horizon, comparison) | Working against the live API; in active development (`src/frontend/`) |
 | Deployment | Not yet |
 
 Supported today: **four curated south-pole sites**, mission dates **2026–2040**, mast and antenna heights **0–20 m**. See `GET /sites` for exact coordinates.
@@ -33,6 +33,8 @@ Supported today: **four curated south-pole sites**, mission dates **2026–2040*
 ```text
 Lunar-Landing-Site-Navigator/
 ├── README.md               # this file
+├── setup.bat               # Windows: one-time install of backend, data and frontend
+├── start.bat               # Windows: start API + web app together
 ├── docs/                   # plan, API reference, physics explainers with evidence
 ├── data/
 │   ├── manifests/          # every external source file, with URL and SHA-256 (committed)
@@ -48,6 +50,23 @@ Lunar-Landing-Site-Navigator/
 ```
 
 The backend has two halves: **`app/`** is the server and needs only FastAPI, Pydantic and NumPy; **`pipeline/`** is the offline data pipeline, which uses heavier tools (SpiceyPy, rasterio, pyproj) and never runs on the server. More detail in [src/backend/README.md](src/backend/README.md).
+
+## Quick start on Windows
+
+From the repository root:
+
+```bash
+setup.bat
+```
+
+```bash
+start.bat
+```
+
+- **`setup.bat`** (once) installs the backend's Python environment, downloads and verifies NASA's terrain data (about 1 GB, 15–20 minutes the first time), builds the terrain grids, installs the frontend's Node.js and packages, and points the frontend at the local API. Re-running it is safe and takes about 20 seconds.
+- **`start.bat`** (every time) opens two windows, **LunarSight API** (http://127.0.0.1:8000) and **LunarSight Web** (http://localhost:5173), waits until both respond, then opens the app in your browser. **Close both windows to stop the app.** `start.bat nobrowser` starts without opening a browser.
+
+Requirements: Python 3.12+ on `PATH`, about 2.6 GB of disk, internet access for setup. Node.js does **not** need to be installed: setup downloads a checksum-verified copy into `src/frontend/.frontend-tools/`. For macOS/Linux, or to understand each step, follow the manual installation below.
 
 ## Installation
 
@@ -158,6 +177,24 @@ The first request at a given mast height takes about 1.5 s per site (the horizon
 
 Stop the server with **Ctrl+C**.
 
+## Running the full app (API + web app)
+
+`start.bat` does all of this on Windows. Manually, in two terminals:
+
+**Terminal 1, the API**, from `src/backend`, allowing the web app's address to call it:
+
+| Shell | Command |
+|---|---|
+| PowerShell | `$env:LLSN_CORS_ORIGINS="http://localhost:5173"; .venv\Scripts\python -m uvicorn app.main:app` |
+| macOS / Linux | `LLSN_CORS_ORIGINS=http://localhost:5173 .venv/bin/python -m uvicorn app.main:app` |
+
+**Terminal 2, the web app**, from `src/frontend`, after a one-time install:
+1. Install: on Windows `powershell -NoProfile -ExecutionPolicy RemoteSigned -File install.ps1`; elsewhere, with Node.js 22.12+ and pnpm, `pnpm install --frozen-lockfile`.
+2. Create `src/frontend/.env.local` containing `VITE_API_BASE_URL=http://127.0.0.1:8000`.
+3. Start: on Windows `powershell -NoProfile -ExecutionPolicy RemoteSigned -File install.ps1 -Start`; elsewhere `pnpm run dev`.
+
+Open http://localhost:5173. The four supported sites appear on the map; pick one, open **Mission**, and choose **Run Analysis**. **Explore demo** shows a clearly labelled synthetic scenario that works without the API. More in [src/frontend/README.md](src/frontend/README.md).
+
 ## Rebuilding and re-validating the data
 
 None of this is needed to run the API. Each step is described in its physics explainer.
@@ -180,6 +217,8 @@ None of this is needed to run the API. Each step is described in its physics exp
 | `404 site_unavailable` | The requested coordinates aren't within 100 m of a supported site. Copy exact coordinates from `GET /sites`. |
 | `422 mission_out_of_range` | The start must be on a whole UTC hour, and the mission must lie within 2026-01-01 to 2040-12-31. |
 | `ModuleNotFoundError` | The virtual environment isn't active, or step 2's `pip install -e . --no-deps` was skipped. |
+| `start.bat` says a port is already in use | The app (or something else) is already running on 8000 or 5173. Close the old LunarSight windows first. |
+| The web app says the site list couldn't be loaded | The API isn't running, or was started without `LLSN_CORS_ORIGINS=http://localhost:5173`. Use `start.bat`, or see "Running the full app". |
 
 ## Documentation
 
