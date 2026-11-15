@@ -5,6 +5,7 @@ import { analysisKey, candidateSite, coordinates, defaultSettings, formatUtc, in
 import { EdgeDrawers, MissionFields, VehicleFields, type Drawer } from './Configuration'
 import { HorizonView } from './HorizonView'
 import { MapView, type Sector } from './MapView'
+import { PlanningPanel, type PlanTab } from './Planning'
 import { Rankings, SiteAnalysis } from './Results'
 import mark from './assets/lunarsight.svg'
 import demoAnalysis from './data/demo.json'
@@ -14,7 +15,7 @@ type Records = Record<string, Candidate>
 const apiUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
 // The backend accepts independent mast and antenna heights; set 'false' only for a backend that does not.
 const independentAntenna = import.meta.env.VITE_INDEPENDENT_ANTENNA !== 'false'
-const emptyCatalog: SiteCatalog = { sites: [], toleranceM: 0, customNorthEdgeDeg: null }
+const emptyCatalog: SiteCatalog = { sites: [], toleranceM: 0, customNorthEdgeDeg: null, supportedEndUtc: null }
 
 const fixtures = demoAnalysis.map(readAnalysis)
 const demoSites = fixtures.filter(candidate => candidate.vehicle.solar_panel_mast_height_m === 2).map(candidateSite)
@@ -75,6 +76,7 @@ export function App() {
   const [analyses, setAnalyses] = useState<Records>({})
   const [baselines, setBaselines] = useState<Record<string, string>>({})
   const [imported, setImported] = useState<{ key: string; candidate: Candidate }>()
+  const [planTab, setPlanTab] = useState<PlanTab>('explain')
   const activeOperation = useRef<AbortController | null>(null)
   const savedState = useRef<{ site: Site; settings: Settings; view: View; index: number } | null>(null)
 
@@ -297,10 +299,13 @@ export function App() {
           onCoordinates={() => {
             changeDrawer('mission', true)
             requestAnimationFrame(() => document.getElementById('mission-title')?.focus())
-          }} availability={catalogError || availability} /></div>
+          }} availability={catalogError || availability} coverageEdgeDeg={demo ? null : catalog.customNorthEdgeDeg} /></div>
         {view === 'horizon' && <HorizonView key={`${key}/${source ?? ''}`} candidate={candidate} baseline={baseline} index={index} onSeek={setIndex}
           full={full} onFull={() => setFull(true)} onSector={() => setFull(false)} sector={sector} onSectorLimits={setSector}
           onLoad={loadFile} message={panelMessage} />}
+        {view === 'horizon' && apiUrl && candidate && source === 'Backend analysis' && !busy
+          && <PlanningPanel key={key} apiUrl={apiUrl} site={site} settings={settings} candidate={candidate} index={index}
+            tab={planTab} onTab={setPlanTab} supportedEndUtc={catalog.supportedEndUtc} onRun={run} />}
         {view === 'rankings' && <Rankings rows={rows} active={detailOpen ? site : undefined} onSelect={row => {
           select(row.site)
           if (row.candidate && !demo) setImported(values => values?.key === analysisKey(row.site, settings) ? undefined : values)

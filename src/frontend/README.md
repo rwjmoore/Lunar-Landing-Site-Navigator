@@ -32,7 +32,7 @@ pnpm run build
 
 ## Live data integration
 
-The backend (see the [root README](../../README.md) and [docs/API.md](../../docs/API.md)) serves `GET /sites` and `POST /analyze`. Configure the frontend at build time, or put these variables in `.env.local` for development.
+The backend (see the [root README](../../README.md) and [docs/API.md](../../docs/API.md)) serves `GET /sites`, `POST /analyze` and the planning endpoints below. Configure the frontend at build time, or put these variables in `.env.local` for development.
 
 | Variable | Value |
 | --- | --- |
@@ -42,6 +42,15 @@ The backend (see the [root README](../../README.md) and [docs/API.md](../../docs
 On startup the frontend loads the supported sites from `GET /sites`, so their coordinates always match the backend's terrain data; no site list needs configuring. If the list can't be loaded, the map shows why. When serving the API on another origin, start it with `LLSN_CORS_ORIGINS` set to the frontend's origin (e.g. `http://localhost:5173`).
 
 The frontend sends the plan's coordinate-based request and checks the response against the requested location (within the backend's published site-match tolerance), UTC samples, cadence, and vehicle. When the API rejects a request, its own explanation is shown, e.g. why a mission is out of range. The mast comparison uses two analyses with the same mission and constraints. A live site comparison runs one `/analyze` request per supported site with identical settings.
+
+### Custom points and mission planning
+
+- **Custom points.** If `GET /sites` reports `custom_points_available`, the map draws a green dashed ring at `custom_point_north_edge_latitude_deg` (86.7°S today). Any point inside it can be analysed: the backend computes its terrain horizon on demand, which takes a few seconds the first time. Points outside it show a coverage message.
+- **Mission planning panel** (under the horizon view, for backend analyses; `src/Planning.tsx`, API client `src/planningApi.ts`):
+  - **Why & what next** (`POST /insights`): time to the next sunset/sunrise and Earthset/Earthrise at the timeline position, a plain-language summary, the longest joint Sun + Earth window, and what blocked the worst outages.
+  - **Start dates** (`POST /calendar`): one square per day of the chosen year, coloured by whether a mission starting then meets the limits and by how much slack. Click a day to analyse it.
+  - **Fix this mission** (`POST /rescue`, about 5–15 s): the smallest single change (mast, antenna, start date, or a spot up to 800 m away), each with **Apply and analyse**.
+  - Start dates and rescue need hourly sampling.
 
 ### Testing against a local backend
 

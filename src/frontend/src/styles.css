@@ -354,6 +354,46 @@ input:disabled { opacity: 0.58; }
 .height-field input[type='range'] { grid-column: 1 / -1; }
 .field-note { font-size: 11px; }
 
+.planning { margin: 0 12px 12px; border: 1px solid #31333a; border-radius: 10px; background: #111115; }
+.planning-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 11px; border-bottom: 1px solid #26272d; }
+.planning-heading h2 { font-size: 13px; font-weight: 700; }
+.plan-tabs { display: flex; flex-wrap: wrap; gap: 5px; }
+.plan-tabs button { min-height: 29px; font-size: 11px; padding: 4px 10px; background: #15161a; }
+.plan-tabs button[aria-selected='true'] { background: #293241; border-color: #597090; color: #f3f7ff; font-weight: 650; }
+.plan-body { padding: 11px; display: grid; gap: 10px; font-size: 12px; }
+.plan-note { padding: 0 11px 11px; color: var(--muted); font-size: 11px; }
+.plan-body .plan-note { padding: 0; }
+.plan-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 9px; }
+.plan-toolbar p { color: #c4c7d0; font-size: 11px; max-width: 640px; }
+.plan-toolbar label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+.plan-now { display: flex; flex-wrap: wrap; gap: 5px 16px; align-items: baseline; padding: 8px 10px; border: 1px solid #34363e; border-radius: 8px; background: #17171b; }
+.plan-now span { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.plan-now strong { font-weight: 650; font-size: 12px; }
+.plan-summary { margin: 0; padding-left: 17px; display: grid; gap: 4px; color: #d6d9e2; line-height: 1.45; }
+.plan-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 9px; }
+.plan-card { border: 1px solid #34363e; background: #17171b; padding: 9px 10px; border-radius: 8px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.plan-card.fixes { border-color: #38634f; }
+.plan-card h3 { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12px; font-weight: 670; }
+.plan-card p { color: #c3c5ce; font-size: 11px; }
+.plan-card .margins { margin-top: 0; }
+.plan-card button { justify-self: start; font-size: 11px; min-height: 29px; }
+.plan-figure { font-size: 19px !important; font-weight: 710; color: #eef0f4 !important; font-variant-numeric: tabular-nums; }
+.plan-figure small { font-size: 10px; font-weight: 400; color: var(--muted); }
+.plan-headline { color: #d6d9e2; }
+.plan-events ol { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 3px; max-height: 220px; overflow: auto; font-size: 11px; }
+.plan-events li { display: flex; gap: 12px; }
+.plan-events time { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 128px; }
+.calendar-scroll { overflow-x: auto; }
+.calendar-grid { display: grid; gap: 2px; min-width: 620px; grid-template-columns: 30px repeat(31, minmax(14px, 1fr)); }
+.calendar-row { display: contents; }
+.calendar-day, .calendar-month { font-size: 9px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+.calendar-month { text-align: left; align-self: center; }
+.calendar-cell { min-height: 0; height: 16px; padding: 0; border: 0; border-radius: 3px; }
+.calendar-cell.empty { background: transparent; }
+.calendar-cell:hover:not(:disabled) { outline: 1px solid #e6f0ff; background-blend-mode: lighten; }
+.calendar-cell.current { outline: 2px solid #e6f0ff; outline-offset: 0; }
+.interval-key i.current-key { background: transparent; outline: 2px solid #e6f0ff; }
+
 @media (max-width: 1140px) {
   .app { --bar-height: 117px; }
   .brand { top: 7px; transform: none; font-size: 20px; }

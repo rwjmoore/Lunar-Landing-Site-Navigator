@@ -172,8 +172,10 @@ function viewport(width: number, height: number, center: Point, zoom: number) {
   return { scale, pole: { x: width / 2 - center.x * scale, y: height / 2 + center.y * scale } }
 }
 
-export function MapView({ site, sites, onSelect, onInspect, onCoordinates, availability }: {
+export function MapView({ site, sites, onSelect, onInspect, onCoordinates, availability, coverageEdgeDeg = null }: {
   site: Site; sites: Site[]; onSelect: (site: Site) => void; onInspect: () => void; onCoordinates: () => void; availability: string
+  /** Northern edge of the backend's on-demand terrain coverage, drawn as a ring; null hides it. */
+  coverageEdgeDeg?: number | null
 }) {
   const { image, failed } = useBasemap()
   const [center, setCenter] = useState<Point>(origin)
@@ -193,6 +195,27 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
     ctx.save()
     paintBase(ctx, pole, scale, image)
     paintGrid(ctx, pole, scale, w, h)
+    if (coverageEdgeDeg !== null) {
+      const radius = project({ latitude_deg: coverageEdgeDeg, longitude_deg_east: 0 }).y * scale
+      circle(ctx, pole, radius)
+      ctx.setLineDash([10, 6])
+      ctx.strokeStyle = '#8fe3b8'
+      ctx.lineWidth = 1.6
+      ctx.stroke()
+      ctx.setLineDash([])
+      const label = `Analysis coverage · south of ${Math.abs(coverageEdgeDeg).toFixed(1)}°S`
+      const x = pole.x - radius * 0.62
+      const y = pole.y + radius * 0.80
+      if (x > 80 && x < w - 80 && y > 20 && y < h - 50) {
+        ctx.font = '600 11px Inter, system-ui'
+        ctx.textAlign = 'center'
+        ctx.lineWidth = 3
+        ctx.strokeStyle = '#0c121c'
+        ctx.strokeText(label, x, y)
+        ctx.fillStyle = '#b5f0d0'
+        ctx.fillText(label, x, y)
+      }
+    }
     for (const location of sites) {
       if (sameSite(location, site)) continue
       const point = screenPoint(project(location), pole, scale)
@@ -206,7 +229,7 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
     paintSelection(ctx, pole, scale, site)
     ctx.restore()
     paintScale(ctx, { x: 24, y: h - 28 }, pole, scale, Math.min(w * 0.23, 138))
-  }, [center, image, site, sites, zoom])
+  }, [center, coverageEdgeDeg, image, site, sites, zoom])
 
   function select(point: Point, pole: Point, scale: number) {
     const p = projectedPoint(point, pole, scale)

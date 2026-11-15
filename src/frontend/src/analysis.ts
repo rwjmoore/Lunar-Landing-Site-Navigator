@@ -254,6 +254,8 @@ export interface SiteCatalog {
   /** If the backend analyses any coordinates on demand: the covered area's northern edge
    *  (points must lie south of it, e.g. -86.7). Null when custom points are unavailable. */
   customNorthEdgeDeg: number | null
+  /** The last supported sample time (UTC), if the backend published it. */
+  supportedEndUtc: string | null
 }
 
 /** True if the backend can analyse this point on demand (inside its covered area, away from the pole). */
@@ -277,7 +279,8 @@ export function readSiteCatalog(value: unknown): SiteCatalog {
   requireField(isNumber(body.site_match_tolerance_m) && body.site_match_tolerance_m > 0, 'site match tolerance')
   const edge = body.custom_points_available === true && inRange(body.custom_point_north_edge_latitude_deg, -90, -80)
     ? body.custom_point_north_edge_latitude_deg as number : null
-  return { sites: readSiteList(body.sites), toleranceM: body.site_match_tolerance_m, customNorthEdgeDeg: edge }
+  return { sites: readSiteList(body.sites), toleranceM: body.site_match_tolerance_m, customNorthEdgeDeg: edge,
+    supportedEndUtc: isUtc(body.supported_end_utc) ? body.supported_end_utc : null }
 }
 
 /** Surface distance between two locations on the 1737.4 km reference sphere, in metres. */
@@ -317,6 +320,15 @@ async function send(url: string, init: RequestInit, action: string) {
   }
 }
 
+/** POSTs a JSON body to one of the API's endpoints and returns the parsed reply, with readable errors. */
+export async function postJson(base: string, path: string, body: unknown, signal: AbortSignal, action: string): Promise<unknown> {
+  const reply = await send(`${base.replace(/\/+$/, '')}${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
+  }, action)
+  if (!reply.ok) throw await replyError(reply, `${action} request`)
+  return reply.json()
+}
+
 export async function requestSites(base: string, signal: AbortSignal): Promise<SiteCatalog> {
   const reply = await send(`${base.replace(/\/+$/, '')}/sites`, { signal }, 'site list')
   if (!reply.ok) throw await replyError(reply, 'site list request')
@@ -333,7 +345,8 @@ export async function requestAnalysis(base: string, request: AnalysisRequest, si
   const times = candidate.series.timestamps_utc
   const expectedCount = Math.floor(mission.duration_hours * 3600 / mission.sample_step_seconds) + 1
   const start = Date.parse(mission.start_utc)
-  // The backend answers with its supported site's exact coordinates, matched within its published tolerance.
+  // The backend answers with the supported site's exact coordinates (within its published tolerance),
+  // or echoes the requested ones for a custom point.
   if (surfaceDistanceM(candidate.location, request.site) > toleranceM
     || candidate.vehicle.solar_panel_mast_height_m !== vehicle.solar_panel_mast_height_m
     || candidate.vehicle.antenna_height_m !== vehicle.antenna_height_m

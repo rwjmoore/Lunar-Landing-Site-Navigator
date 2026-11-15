@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "api-test", "runtimeExecutable": "C:/Users/randy/AppData/Local/Temp/claude/294199e25ed4b3e8/bba58a77-93c1-4bba-b0d6-83edcbda9208/scratchpad/api8001.bat", "runtimeArgs": [], "port": 8001 },
+    { "name": "web-test", "runtimeExecutable": "C:/Users/randy/AppData/Local/Temp/claude/294199e25ed4b3e8/bba58a77-93c1-4bba-b0d6-83edcbda9208/scratchpad/web5174.bat", "runtimeArgs": [], "port": 5174 }
+  ]
+}

@@ -26,7 +26,7 @@ Raising the solar mast changes the horizon, not the Sun: at some sites going fro
 |---|---|
 | Physics core (frames, Sun/Earth ephemeris, terrain, horizon, visibility, metrics) | Done, reviewed, and **validated against NASA's published south-pole illumination maps** (mean difference 0.1 percentage points, correlation 0.99) |
 | Backend API (`/sites`, `/analyze`, `/compare`, `/data-provenance`) | Done ([docs/API.md](docs/API.md)) |
-| Planning tools (`/calendar`, `/insights`, `/rescue`) | Backend done and signed off ([docs/physics/planning.md](docs/physics/planning.md)); not yet in the UI |
+| Planning tools (`/calendar`, `/insights`, `/rescue`) | Signed off ([docs/physics/planning.md](docs/physics/planning.md)); in the UI under Horizon Analysis |
 | Frontend ("LunarSight": map, 360° horizon, comparison) | Working against the live API; in active development (`src/frontend/`) |
 | Deployment | Not yet |
 
