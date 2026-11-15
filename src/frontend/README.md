@@ -26,7 +26,7 @@ pnpm run build
 
 ## Data modes
 
-- The app opens in map mode. You can choose any point within the displayed polar coverage. Waypoints without an analysis show missing terrain and unknown Sun and Earth visibility. The basemap is available offline.
+- The app opens in map mode. You can choose any point within the displayed polar coverage. Waypoints without an analysis show missing terrain and unknown Sun and Earth visibility. The bundled basemap is available offline. The **HD** map button (off by default) loads sharper LROC tiles over it when online.
 - **Explore demo** loads two synthetic scenarios. It supports UTC playback, comparison, and a mast change from 2 m to 6 m at the default mission settings. The same banner labels the illustrations across all three views.
 - **Load analysis JSON** in Horizon Analysis imports one `AnalyzeResponse` matching the [repository contract](../../docs/frontend-backend_interface.json). The empty contract fixture is valid and exercises the missing-data state. The reader also accepts nullable elevations, optional per-observer `*_observer_no_data` masks, and nullable visibility as proposed in the project plan. It draws gaps and preserves unknown visibility. A local import carries its own timestamps, heights, and provenance and is excluded from shared-mission ranking.
 
@@ -59,5 +59,8 @@ The frontend sends the plan's coordinate-based request and checks the response a
 3. Start the frontend as above and open the printed URL. The four supported sites appear on the map; select one and run the mission.
 
 ## Basemap provenance
+
+**Live imagery (since 2026-11-15):** with the **HD** button on, the map draws tiles from the public LROC Lunaserv WMS (`https://wms.im-ldi.com/`, projection `IAU2000:30120`): the LROC WAC South Pole Summer mosaic (~100 m/px) everywhere, and the controlled LROC NAC south-pole average mosaic (1 m/px, 84–90°S) at closer zooms. The map key names the imagery under the view centre and says when it is enlarged beyond native detail. The bundled image below remains the instant, offline base underneath. Audit and evidence: [docs/imagery.md](../../docs/imagery.md).
+
 
 The local WebP is a 1,408 × 1,408 pixel crop of `WAC_ROI_SOUTH_SUMMER_064P.TIF` at its native ~474 m per pixel, identified by SHA-256 `f368c1d315fe49616dd7f0d52856c1520ed0a1677ee4d1f450ba1c60a13b1330`. Source pixel bounds are `(2334, 2334, 3742, 3742)` using zero-based, right/bottom exclusive coordinates. The raster uses spherical south polar stereographic with a radius of 1,737.4 km, central meridian 0°E, and scale factor 1. The map reads coordinates and distances in this projection and restricts selection to 80–90°S. The raster is for navigation. The analysis horizon comes from the backend's elevation data. [LROC WAC South Pole Summer Mosaic](https://data.lroc.im-ldi.com/lroc/view_rdr/WAC_ROI_SOUTH_SUMMER), Speyerer et al. (2020), [Lunar Surface Science Workshop abstract 5132](https://www.hou.usra.edu/meetings/lunarsurface2020/pdf/5132.pdf).

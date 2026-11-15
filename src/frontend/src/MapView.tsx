@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import { coordinates, sameSite, type Site } from './analysis'
 import { Canvas } from './canvas'
+import { insideNac, layers, levelFor, TileCache, tilesFor, type Bounds, type Tile } from './imagery'
 import { fitToMap, groundDistance, localDirection, mapRadius, project, unproject, type Point } from './polar'
 import basemapUrl from './assets/lroc-south-pole.webp'
 
-const sourceUrl = 'https://data.lroc.im-ldi.com/lroc/view_rdr_product/WAC_ROI_SOUTH_SUMMER_064P'
+const sourceUrl = 'https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_POLE_SOUTH_CM_AVG'
+// Bundled offline base: WAC_ROI_SOUTH_SUMMER_064P crop, ~474 m per pixel. Live tiles draw over it (imagery.ts).
 // Projected outer pixel edges of the cropped GeoTIFF, in lunar kilometres.
 const raster = { west: -333.438404078, east: 333.675305253, north: 333.438404078, south: -333.675305253 }
 const origin = { x: 0, y: 0 }
 const defaultZoom = 1
+// Deep enough to reach the NAC mosaic's 1 m pixels on a typical map viewport.
+const maxZoom = 250
+const minZoom = 0.12
+// How long the view must stay still before tiles are requested.
+const settleMs = 150
 
 function useBasemap() {
   const [image, setImage] = useState<HTMLImageElement | null>(null)
@@ -36,7 +43,8 @@ function circle(ctx: CanvasRenderingContext2D, { x, y }: Point, r: number) {
   ctx.arc(x, y, r, 0, Math.PI * 2)
 }
 
-function paintBase(ctx: CanvasRenderingContext2D, pole: Point, scale: number, image: HTMLImageElement | null) {
+function paintBase(ctx: CanvasRenderingContext2D, pole: Point, scale: number, image: HTMLImageElement | null,
+  paintTiles?: () => void) {
   circle(ctx, pole, mapRadius * scale)
   ctx.clip()
   ctx.fillStyle = '#182028'
@@ -44,10 +52,25 @@ function paintBase(ctx: CanvasRenderingContext2D, pole: Point, scale: number, im
   if (image) {
     const topLeft = screenPoint({ x: raster.west, y: raster.north }, pole, scale)
     ctx.drawImage(image, topLeft.x, topLeft.y, (raster.east - raster.west) * scale, (raster.north - raster.south) * scale)
+  }
+  paintTiles?.()
+  if (image || paintTiles) {
     // The graticule and selection stay legible over bright pixels.
+    circle(ctx, pole, mapRadius * scale)
     ctx.fillStyle = '#0710183b'
     ctx.fill()
   }
+}
+
+/** Which imagery the view centre shows, stated honestly (including when pixels are enlarged past native detail). */
+function imageryNote(kmPerDevicePixel: number, centre: Point, nacShown: boolean, liveShown: boolean) {
+  if (nacShown && insideNac(centre.x, centre.y)) {
+    return kmPerDevicePixel < 0.001 ? 'LROC NAC controlled mosaic · 1 m/px (enlarged beyond native detail)' : 'LROC NAC controlled mosaic · 1 m/px'
+  }
+  if (liveShown) {
+    return kmPerDevicePixel < 0.1 ? 'LROC WAC south-pole mosaic · ~100 m/px (enlarged beyond native detail)' : 'LROC WAC south-pole mosaic · ~100 m/px'
+  }
+  return kmPerDevicePixel < 0.474 ? 'Standard LROC WAC image · ~474 m/px (enlarged beyond native detail)' : 'Standard LROC WAC image · ~474 m/px'
 }
 
 function paintGrid(ctx: CanvasRenderingContext2D, pole: Point, scale: number, width: number, height: number, compact = false) {
@@ -180,6 +203,33 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
   const { image, failed } = useBasemap()
   const [center, setCenter] = useState<Point>(origin)
   const [zoom, setZoom] = useState(defaultZoom)
+  const [tileVersion, setTileVersion] = useState(0)
+  const [imagery, setImagery] = useState('')
+  // Off by default: the standard single image zooms instantly; high-res LROC tiles load only when switched on.
+  const [highRes, setHighRes] = useState(false)
+  const viewportElement = useRef<HTMLDivElement>(null)
+  // The latest view, for the wheel handler (several wheel events can arrive before a re-render).
+  const latest = useRef({ center, zoom })
+  latest.current = { center, zoom }
+  const tiles = useRef<TileCache | null>(null)
+  const pendingTiles = useRef<{ signature: string; tiles: Tile[] }>({ signature: '', tiles: [] })
+  const settleTimer = useRef<number | undefined>(undefined)
+  useEffect(() => () => { if (settleTimer.current !== undefined) clearTimeout(settleTimer.current) }, [])
+  // Switching HD off stops all imagery traffic at once: no settle delay, during which queued tiles could still start.
+  useEffect(() => {
+    if (highRes) return
+    if (settleTimer.current !== undefined) { clearTimeout(settleTimer.current); settleTimer.current = undefined }
+    pendingTiles.current = { signature: '', tiles: [] }
+    tiles.current?.request([])
+  }, [highRes])
+  if (!tiles.current) {
+    let pending = false
+    tiles.current = new TileCache(() => {
+      if (pending) return
+      pending = true
+      requestAnimationFrame(() => { pending = false; setTileVersion(value => value + 1) })
+    })
+  }
   const [hover, setHover] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const drag = useRef<{ start: Point; center: Point; moved: boolean } | null>(null)
@@ -193,7 +243,46 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
     ctx.fillStyle = '#0b0e12'
     ctx.fillRect(0, 0, w, h)
     ctx.save()
-    paintBase(ctx, pole, scale, image)
+    const cache = tiles.current!
+    const dpr = window.devicePixelRatio || 1
+    const view: Bounds = { minX: -pole.x / scale, maxX: (w - pole.x) / scale, minY: (pole.y - h) / scale, maxY: pole.y / scale }
+    const needed: Tile[] = []
+    let nacShown = false
+    let liveShown = false
+    // High-res off: only the standard single image is drawn, and no tiles are requested (any in flight are cancelled).
+    paintBase(ctx, pole, scale, image, !highRes ? undefined : () => {
+      const target = levelFor(scale * dpr)
+      ctx.imageSmoothingQuality = 'high'
+      for (const layer of layers) {
+        const top = Math.min(target, layer.maxLevel)
+        if (top < layer.minLevel) continue
+        // Coarser levels first, so finer tiles replace them as they arrive (no blank gaps while loading).
+        for (let level = Math.max(layer.minLevel, top - 4); level <= top; level++) {
+          for (const tile of tilesFor(layer, level, view)) {
+            const picture = cache.get(tile.key)
+            if (level === top) needed.push(tile)
+            if (!picture) continue
+            if (layer.id === 'nac') nacShown = true
+            else liveShown = true
+            const a = screenPoint({ x: tile.bounds.minX, y: tile.bounds.maxY }, pole, scale)
+            const b = screenPoint({ x: tile.bounds.maxX, y: tile.bounds.minY }, pole, scale)
+            // Snap to whole pixels so neighbouring tiles meet without hairline seams.
+            ctx.drawImage(picture, Math.floor(a.x), Math.floor(a.y), Math.ceil(b.x) - Math.floor(a.x), Math.ceil(b.y) - Math.floor(a.y))
+          }
+        }
+      }
+    })
+    // Ask for tiles only once zooming/panning pauses, so levels merely passed through are never downloaded.
+    const signature = needed.map(tile => tile.key).join('|')
+    if (signature !== pendingTiles.current.signature) {
+      pendingTiles.current = { signature, tiles: needed }
+      if (settleTimer.current !== undefined) clearTimeout(settleTimer.current)
+      settleTimer.current = window.setTimeout(() => {
+        settleTimer.current = undefined
+        cache.request(pendingTiles.current.tiles)
+      }, settleMs)
+    }
+    setImagery(imageryNote(1 / (scale * dpr), center, nacShown, liveShown))
     paintGrid(ctx, pole, scale, w, h)
     if (coverageEdgeDeg !== null) {
       const radius = project({ latitude_deg: coverageEdgeDeg, longitude_deg_east: 0 }).y * scale
@@ -229,7 +318,8 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
     paintSelection(ctx, pole, scale, site)
     ctx.restore()
     paintScale(ctx, { x: 24, y: h - 28 }, pole, scale, Math.min(w * 0.23, 138))
-  }, [center, coverageEdgeDeg, image, site, sites, zoom])
+    // tileVersion repaints as tiles arrive.
+  }, [center, coverageEdgeDeg, highRes, image, site, sites, zoom, tileVersion])
 
   function select(point: Point, pole: Point, scale: number) {
     const p = projectedPoint(point, pole, scale)
@@ -259,15 +349,46 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
   }
 
   function zoomBy(factor: number) {
-    setZoom(value => Math.min(6, Math.max(0.12, value * factor)))
+    setZoom(value => Math.min(maxZoom, Math.max(minZoom, value * factor)))
   }
+
+  // Mouse-wheel zoom about the cursor (the point under it stays put). Non-passive so the page doesn't scroll.
+  useEffect(() => {
+    const element = viewportElement.current
+    if (!element) return
+    function wheel(event: WheelEvent) {
+      const canvas = element!.querySelector('canvas')
+      if (!canvas || event.target !== canvas) return
+      event.preventDefault()
+      const rect = canvas.getBoundingClientRect()
+      const at = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+      const factor = Math.exp(-event.deltaY * (event.deltaMode === 1 ? 0.05 : 0.0015))
+      const { center: previous, zoom: current } = latest.current
+      const next = Math.min(maxZoom, Math.max(minZoom, current * factor))
+      const before = viewport(rect.width, rect.height, previous, current)
+      const ground = projectedPoint(at, before.pole, before.scale)
+      const after = viewport(rect.width, rect.height, previous, next)
+      const moved = projectedPoint(at, after.pole, after.scale)
+      const shifted = fitToMap({ x: previous.x + ground.x - moved.x, y: previous.y + ground.y - moved.y })
+      latest.current = { center: shifted, zoom: next }
+      setZoom(next)
+      setCenter(shifted)
+    }
+    element.addEventListener('wheel', wheel, { passive: false })
+    return () => element.removeEventListener('wheel', wheel)
+  }, [])
 
   return <div className="map-content">
     <div className="map-toolbar">
-      <p>Click to select a waypoint. Drag to pan.</p>
-      <div className="button-row"><button onClick={onCoordinates}>Enter coordinates</button><button className="primary" onClick={onInspect}>Inspect horizon <span aria-hidden="true">→</span></button></div>
+      <p>Click to select a waypoint. Drag to pan; scroll to zoom.</p>
+      <div className="map-actions">
+        <div className="selected-site" aria-live="polite" aria-label="Selected waypoint">
+          <strong>{site.name}</strong><span>{coordinates(site)}</span>
+        </div>
+        <div className="button-row"><button onClick={onCoordinates}>Enter coordinates</button><button className="primary" onClick={onInspect}>Inspect horizon <span aria-hidden="true">→</span></button></div>
+      </div>
     </div>
-    <div className="map-viewport">
+    <div className="map-viewport" ref={viewportElement}>
       <Canvas paint={draw} className={dragging ? 'is-dragging' : ''} tabIndex={0}
         aria-label="South-polar lunar map. Use the arrow keys to pan and Enter to select the center."
         onPointerDown={event => {
@@ -297,18 +418,20 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
             select({ x: r.width / 2, y: r.height / 2 }, pole, scale)
           }
         }} />
-      <div className="map-key inset-label"><strong>South pole · 2D projected map</strong><span>0°E points up · longitude is east-positive</span></div>
+      <div className="map-key inset-label"><strong>South pole · 2D projected map</strong><span>0°E points up · longitude is east-positive</span>
+        <span className="imagery-note">Imagery: {imagery}</span></div>
       <div className="map-zoom" aria-label="Map zoom">
-        <button aria-label="Zoom in" disabled={zoom >= 6} onClick={() => zoomBy(1.4)}>+</button>
-        <button aria-label="Zoom out" disabled={zoom <= 0.12} onClick={() => zoomBy(1 / 1.4)}>−</button>
+        <button aria-label="Zoom in" disabled={zoom >= maxZoom} onClick={() => zoomBy(1.6)}>+</button>
+        <button aria-label="Zoom out" disabled={zoom <= minZoom} onClick={() => zoomBy(1 / 1.6)}>−</button>
         <button aria-label="Reset map view" title="Reset map view" onClick={() => { setCenter(origin); setZoom(defaultZoom) }}>⌖</button>
+        <button className="hires-toggle" aria-pressed={highRes} title={highRes ? 'High-resolution imagery on (LROC NAC 1 m/px, WAC 100 m/px). Click to use the standard image.'
+          : 'Load high-resolution imagery (LROC NAC 1 m/px, WAC 100 m/px) for this view'} onClick={() => setHighRes(value => !value)}>HD</button>
       </div>
       <div className="map-readouts">
         <div className="inset-label cursor-position"><span>Cursor position</span><strong>{hover ?? 'Move over the map'}</strong></div>
-        <div className="inset-label"><span>Selected waypoint</span><strong>{coordinates(site)}</strong></div>
       </div>
     </div>
-    <div className="map-footer"><p role="status">{availability}</p><a href={sourceUrl} target="_blank" rel="noreferrer">{failed ? 'Basemap unavailable · LROC source' : 'NASA/GSFC/ASU · LROC WAC mosaic'} <span aria-hidden="true">↗</span></a></div>
+    <div className="map-footer"><p role="status">{availability}</p><a href={sourceUrl} target="_blank" rel="noreferrer">{failed ? 'Offline basemap unavailable · LROC source' : 'NASA/GSFC/ASU · LROC NAC + WAC mosaics'} <span aria-hidden="true">↗</span></a></div>
   </div>
 }
 

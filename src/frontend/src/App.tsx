@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { analysisKey, candidateSite, coordinates, defaultSettings, formatUtc, initialSite, readAnalysis,
+import { analysisKey, candidateSite, defaultSettings, formatUtc, initialSite, readAnalysis,
   inCoverage, requestAnalysis, requestSites, sameSite, settingsKey, type Candidate, type Settings, type Site, type SiteCatalog,
   type Vehicle } from './analysis'
 import { EdgeDrawers, MissionFields, VehicleFields, type Drawer } from './Configuration'
@@ -283,24 +283,20 @@ export function App() {
   const rankingSummary = demo || configuredSites.length ? `${formatUtc(settings.mission.start_utc)} · ${settings.mission.duration_hours / 24} days · ${settings.mission.sample_step_seconds / 3600} h steps · ${settings.vehicle.solar_panel_mast_height_m} m mast`
     : 'Compare candidates under a shared mission window and vehicle configuration.'
   const title = view === 'map' ? 'Lunar Map' : view === 'horizon' ? '360° Lunar Horizon & Mission Analysis' : 'Site Rankings & Comparison'
-  const subtitle = view === 'map' ? 'Explore the lunar south pole and select a landing waypoint.' : view === 'horizon'
-    ? 'Local terrain skyline and time-dependent Sun and Earth trajectories.' : 'Compare solar access, Earth visibility, and mission constraints.'
 
   return <div className="app" data-sidebar={showSidebar}>
     <Header view={view} goTo={goTo} demo={demo} toggleDemo={toggleDemo} />
     <div className="workspace">
       <main className="main-panel panel" id="main-content">
-        <div className="content-heading">
-          <div><h1>{title}</h1><p>{subtitle}</p></div>
-          {(view !== 'rankings' || detailOpen) && <div className="waypoint-tag"><strong>{site.name}</strong><span>{coordinates(site)}</span></div>}
-        </div>
+        {/* The top navigation already names each view, so the pane has no visible title (kept for screen readers). */}
+        <h1 className="visually-hidden">{title}</h1>
         {demo && <div className="demo-notice" role="status"><strong>Illustrative demo</strong><span>Terrain profiles, trajectories, and mission results are synthetic.</span></div>}
         <div hidden={view !== 'map'}><MapView site={site} sites={sites} onSelect={select} onInspect={() => goTo('horizon')}
           onCoordinates={() => {
             changeDrawer('mission', true)
             requestAnimationFrame(() => document.getElementById('mission-title')?.focus())
           }} availability={catalogError || availability} coverageEdgeDeg={demo ? null : catalog.customNorthEdgeDeg} /></div>
-        {view === 'horizon' && <HorizonView key={`${key}/${source ?? ''}`} candidate={candidate} baseline={baseline} index={index} onSeek={setIndex}
+        {view === 'horizon' && <HorizonView key={`${key}/${source ?? ''}`} site={site} candidate={candidate} baseline={baseline} index={index} onSeek={setIndex}
           full={full} onFull={() => setFull(true)} onSector={() => setFull(false)} sector={sector} onSectorLimits={setSector}
           onLoad={loadFile} message={panelMessage} />}
         {view === 'horizon' && apiUrl && candidate && source === 'Backend analysis' && !busy

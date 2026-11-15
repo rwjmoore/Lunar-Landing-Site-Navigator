@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { normalizeLongitude, formatUtc, type Candidate, type Visibility } from './analysis'
+import { coordinates, normalizeLongitude, formatUtc, type Candidate, type Site, type Visibility } from './analysis'
 import { Canvas } from './canvas'
 import type { Sector } from './MapView'
 
@@ -291,9 +291,9 @@ function ElevationChart({ tracks, times, index, onSeek }: { tracks: Track[]; tim
 
 const emptyTimes: string[] = []
 
-export function HorizonView({ candidate, baseline, index, onSeek, sector, full, onFull, onSector,
+export function HorizonView({ site, candidate, baseline, index, onSeek, sector, full, onFull, onSector,
   onSectorLimits, onLoad, message }: {
-  candidate: Candidate | undefined; baseline: Candidate | undefined; index: number; onSeek: (sample: number) => void;
+  site: Site; candidate: Candidate | undefined; baseline: Candidate | undefined; index: number; onSeek: (sample: number) => void;
   sector: Sector; full: boolean; onFull: () => void; onSector: () => void; onSectorLimits: (limits: Sector) => void;
   onLoad: (file: File) => void; message: string;
 }) {
@@ -331,6 +331,7 @@ export function HorizonView({ candidate, baseline, index, onSeek, sector, full, 
       <div className="button-row"><button className={full ? 'primary' : ''} aria-pressed={full} onClick={onFull}>Full 360°</button>
         <button className={!full ? 'primary' : ''} aria-pressed={!full} onClick={onSector}>View sector</button>
         <span className="sector-reading">{full ? '0° → 360°' : `${sector.start}° → ${normalizeLongitude(sector.start + sector.width)}°`}</span></div>
+      <div className="selected-site horizon-site" aria-label="Analysed waypoint"><strong>{site.name}</strong><span>{coordinates(site)}</span></div>
       <div className="sector-inputs">
         <label>Sector start <input type="number" min={0} max={359} value={sector.start}
           onChange={e => onSectorLimits({ ...sector, start: Math.max(0, Math.min(359, Math.round(Number(e.target.value)))) })} /></label>
