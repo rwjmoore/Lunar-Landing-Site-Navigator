@@ -2,7 +2,7 @@
 
 FastAPI service that will compute terrain-aware Sun/Earth line-of-sight and mission metrics for a fixed set of lunar south-pole sites. See [docs/PROJECT_PLAN.md](../../docs/PROJECT_PLAN.md) for scope and [docs/SCIENCE_CONVENTIONS.md](../../docs/SCIENCE_CONVENTIONS.md) for the physics conventions.
 
-**Status: M1 physics foundations complete (P1–P3 signed off).** Only `GET /health` exists. Implemented and tested:
+**Status: M1 and M2 physics signed off.** The physics core runs end to end; the API wiring is M3. Only `GET /health` exists. Implemented and tested:
 
 | Component | Code | Explainer | Review |
 |---|---|---|---|
@@ -12,7 +12,9 @@ FastAPI service that will compute terrain-aware Sun/Earth line-of-sight and miss
 
 | P3 Terrain ingest | `app/terrain/`, `pipeline/build_terrain.py` | [docs/physics/terrain.md](../../docs/physics/terrain.md) | Signed off |
 
-The horizon/visibility physics (M2) is not implemented yet.
+| M2 Horizon, visibility, analysis | `app/physics/`, `pipeline/build_far_horizons.py` | [docs/physics/horizon.md](../../docs/physics/horizon.md) | Signed off |
+
+`app/physics/analysis.py` runs the full chain (site + mission + vehicle + constraints → horizons, Sun/Earth visibility, metrics, feasibility); it is not wired to the API yet (M3).
 
 ## Two halves: runtime and offline pipeline
 
@@ -51,6 +53,8 @@ The SPICE kernels and terrain GeoTIFFs are not in the repo. Download the files l
 | Regenerate P2 review evidence and plot | `python -m pipeline.sky_evidence` |
 | Build terrain artifacts and site list | `python -m pipeline.build_terrain` |
 | Regenerate P3 review evidence and images | `python -m pipeline.terrain_evidence` |
+| Precompute far-zone horizons | `python -m pipeline.build_far_horizons` |
+| Regenerate M2 review evidence and horizon plots (~2 min) | `python -m pipeline.horizon_evidence` |
 | Refresh the lock file | `pip freeze --exclude-editable` into `requirements.lock` (keep the two header comment lines) |
 
 ## Layout
@@ -68,6 +72,10 @@ src/backend/
 │   │   └── frames.py       # site <-> position, east/north/up, az/el, great circles
 │   ├── terrain/
 │   │   └── grid.py         # polar stereographic projection, TerrainGrid, bilinear height lookup
+│   ├── physics/
+│   │   ├── horizon.py      # ray casting, far-field candidates, per-height horizon (cached)
+│   │   ├── visibility.py   # Sun/Earth vs horizon: visible / obstructed / unknown
+│   │   └── analysis.py     # one-call analysis -> Assessment
 │   ├── metrics/
 │   │   ├── core.py         # EvaluationContext, Metric interface, MetricResult, runner
 │   │   ├── visibility.py   # VisibleFraction, LongestOutage (reused for Sun and Earth)
@@ -79,6 +87,8 @@ src/backend/
 │   ├── spice_kernels.py    # checksum-verified DE421 kernel loading
 │   ├── build_terrain.py    # terrain artifacts + data/sites/south_pole_sites.json
 │   ├── terrain_evidence.py # P3 evidence tables and images
+│   ├── build_far_horizons.py # data/horizons/<site>_far.npz
+│   ├── horizon_evidence.py # M2 evidence tables and horizon plots
 │   ├── build_sky_grid.py   # builds data/sky/ grid
 │   ├── horizons_check.py   # JPL Horizons cross-check
 │   └── sky_evidence.py     # P2 evidence tables and plot
@@ -90,6 +100,8 @@ src/backend/
 │   ├── test_sky_spice.py   # real grid vs SPICE (skipped without kernels)
 │   ├── test_terrain_grid.py # synthetic grids, projection vs pyproj
 │   ├── test_terrain_data.py # real artifacts vs source GeoTIFFs (skipped if not built)
+│   ├── test_horizon_synthetic.py # sphere, wall, ridge, monotonicity, no-data, visibility rules
+│   ├── test_horizon_sites.py # real-site tolerances, mast/Earth independence, reproducibility
 │   ├── test_metrics_core.py
 │   ├── test_visibility_metrics.py
 │   └── test_constraints.py

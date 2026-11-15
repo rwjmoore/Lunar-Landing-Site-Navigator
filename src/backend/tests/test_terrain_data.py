@@ -81,11 +81,11 @@ def test_site_list_is_consistent():
         ground = grid.height_at(np.radians(s["latitude_deg"]), np.radians(s["longitude_deg_east"]))
         assert ground == pytest.approx(s["ground_height_m"], abs=0.05)
         assert -90.0 < s["latitude_deg"] < -88.0
-        # The near-field circle must lie entirely inside the 5 m grid.
+        # The near-field circle must lie within the outermost pixel centres,
+        # where every point can be height-looked-up.
         rows, cols = grid.shape
-        half = grid.pixel_m / 2
-        left, right = grid.x0_m - half, grid.x0_m + (cols - 1) * grid.pixel_m + half
-        top, bottom = grid.y0_m + half, grid.y0_m - (rows - 1) * grid.pixel_m - half
+        left, right = grid.x0_m, grid.x0_m + (cols - 1) * grid.pixel_m
+        top, bottom = grid.y0_m, grid.y0_m - (rows - 1) * grid.pixel_m
         edge = min(s["map_x_m"] - left, right - s["map_x_m"], top - s["map_y_m"], s["map_y_m"] - bottom)
         assert 0 < s["near_field_radius_m"] <= min(8000.0, edge) + 1e-6
 

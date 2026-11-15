@@ -116,15 +116,21 @@ def site_pixel(heights: np.ndarray, meta: dict, rule: str) -> tuple[float, float
 
 
 def near_field_radius(meta: dict, row: float, col: float) -> float:
-    """Largest radius (<= 8 km) fully covered by the 5 m grid around a pixel centre."""
-    half = meta["pixel_m"] / 2
-    to_edges = [
-        col * meta["pixel_m"] + half,
-        (meta["width"] - 1 - col) * meta["pixel_m"] + half,
-        row * meta["pixel_m"] + half,
-        (meta["height"] - 1 - row) * meta["pixel_m"] + half,
+    """Largest radius (<= 8 km) over which every point can be height-looked-up.
+
+    Bilinear lookup needs points within the outermost pixel CENTRES (not the
+    pixel edges), so the radius is measured to those centres. Measuring to the
+    edges left the last 2.5 m of every near-zone ray unknown (found in M2).
+    One pixel of margin is kept because surface distance and map distance
+    differ slightly (polar stereographic scale > 1 away from the pole).
+    """
+    to_outer_centres = [
+        col * meta["pixel_m"],
+        (meta["width"] - 1 - col) * meta["pixel_m"],
+        row * meta["pixel_m"],
+        (meta["height"] - 1 - row) * meta["pixel_m"],
     ]
-    return min(NEAR_FIELD_RADIUS_M, min(to_edges))
+    return min(NEAR_FIELD_RADIUS_M, min(to_outer_centres) - meta["pixel_m"])
 
 
 def main() -> None:

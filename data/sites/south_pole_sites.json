@@ -8,7 +8,7 @@
       "ground_height_m": 1944.83,
       "map_x_m": -11000.0,
       "map_y_m": -12000.0,
-      "near_field_radius_m": 8000.0,
+      "near_field_radius_m": 7992.5,
       "terrain_dir": "data/artifacts/terrain/site01",
       "measured_fraction_within_8km": 0.0985,
       "coordinate_source": "centre of the PGDA 5 m site DEM (docs/physics/terrain.md section 6)"
@@ -21,7 +21,7 @@
       "ground_height_m": 1739.12,
       "map_x_m": -2687.5,
       "map_y_m": -6092.5,
-      "near_field_radius_m": 6312.5,
+      "near_field_radius_m": 6305.0,
       "terrain_dir": "data/artifacts/terrain/site04",
       "measured_fraction_within_8km": 0.0896,
       "coordinate_source": "highest 5 m DEM pixel within 2 km of the DEM centre (rim crest) (docs/physics/terrain.md section 6)"
@@ -34,7 +34,7 @@
       "ground_height_m": 1645.25,
       "map_x_m": 30000.0,
       "map_y_m": -20000.0,
-      "near_field_radius_m": 8000.0,
+      "near_field_radius_m": 7992.5,
       "terrain_dir": "data/artifacts/terrain/site07",
       "measured_fraction_within_8km": 0.073,
       "coordinate_source": "centre of the PGDA 5 m site DEM (docs/physics/terrain.md section 6)"
@@ -47,7 +47,7 @@
       "ground_height_m": 1793.73,
       "map_x_m": -37000.0,
       "map_y_m": 15000.0,
-      "near_field_radius_m": 8000.0,
+      "near_field_radius_m": 7992.5,
       "terrain_dir": "data/artifacts/terrain/site11",
       "measured_fraction_within_8km": 0.0823,
       "coordinate_source": "centre of the PGDA 5 m site DEM (docs/physics/terrain.md section 6)"

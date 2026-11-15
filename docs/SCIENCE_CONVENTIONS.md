@@ -32,7 +32,7 @@
 
 | Tier | Product | Native resolution | Used range | Status |
 |---|---|---|---|---|
-| Near-field | PGDA 78 per-site 5 m DEMs (`SiteNN_final_adj_5mpp_surf.tif`, 16 × 16 km each) | 5 m | 0 – per-site radius, max 8 km (Site 04: 6.31 km) | **LOCKED** |
+| Near-field | PGDA 78 per-site 5 m DEMs (`SiteNN_final_adj_5mpp_surf.tif`, 16 × 16 km each) | 5 m | 0 – per-site radius, max 8 km (7.9925 km; Site 04: 6.305 km) | **LOCKED** |
 | Far-field | PGDA 90 `LDEM_80S_40MPP_ADJ.TIF` (80–90°S, ±304 km) | 40 m | 8 – 200 km | **LOCKED** |
 | Count map | Matching `LDEC` (LOLA returns per pixel), inspection only | 5 m | — | **LOCKED** |
 

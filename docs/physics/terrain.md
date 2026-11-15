@@ -103,6 +103,8 @@ Each site's ground height is the §5 lookup at that point. All four are far enou
 
 **The nearby/distant boundary is set per site, at most 8 km.** It is the largest radius fully covered by 5 m data in every direction around the site point, capped at 8 km (previously "~10 km, tunable"). Sites at their DEM centre get 8 km; Site 04, moved 1.9 km off-centre to the rim crest, gets **6.31 km**. The height correction for distant terrain at 8 km is about $0.07^\circ$ for a 10 m mast (about $0.09^\circ$ at 6.3 km), handled analytically as planned (`PROJECT_PLAN.md` §5.3). Each site's radius is stored in the site list as `near_field_radius_m`.
 
+> **Correction after sign-off (found in M2, 2026-11-14; accepted by Randy Moore with `horizon.md` §11).** The radius was measured to the 5 m map's pixel *edges*, but height lookups only work up to the outermost pixel *centres*, so the last few metres of each near-zone ray came back unknown. The radius is now measured to the pixel centres minus one pixel (the map's scale differs from 1 by a few parts per million): **7,992.5 m** for the DEM-centre sites and **6,305 m** for Site 04 (previously 8,000 m and 6,310 m). Site coordinates and ground heights are unchanged.
+
 **Code:**
 - `app/terrain/` (runtime, NumPy only): the projection formulas, a grid class (origin, pixel size, heights) and the bilinear lookup with the unknown rules.
 - `pipeline/build_terrain.py` (offline): verifies checksums, reads the GeoTIFFs with rasterio, **checks that each file's projection exactly matches §2** (refusing anything else), and writes the outputs above.
