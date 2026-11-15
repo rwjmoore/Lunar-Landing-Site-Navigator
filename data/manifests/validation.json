@@ -1,0 +1,14 @@
+{
+  "description": "NASA LOLA average illumination and Earth visibility maps (Mazarico et al. 2011, 2016 build) used only to validate the physics (docs/physics/validation.md). Files live in data/raw/validation/ (gitignored). Verify with sha256 before use.",
+  "source_base_url": "https://imbrium.mit.edu/EXTRAS/ILLUMINATION/IMG/",
+  "downloaded_utc": "2026-11-14",
+  "citations": [
+    "Mazarico, E., et al. (2011), Illumination conditions of the lunar polar regions using LOLA topography, Icarus 211, 1066-1081, doi:10.1016/j.icarus.2010.10.030"
+  ],
+  "files": [
+    {"name": "AVGVISIB_85S_060M_201608.IMG", "role": "average solar visibility (any part of disk), 85-90 S, 60 m", "path": "AVGVISIB_85S_060M_201608.IMG", "bytes": 51166728, "sha256": "82dadf321dee28f1947c1fed81858d4cf50fe8eb2aa405aae114e8ab21c1efe1"},
+    {"name": "AVGVISIB_85S_060M_201608.LBL", "role": "PDS label for the above", "path": "AVGVISIB_85S_060M_201608.LBL", "bytes": 4094, "sha256": "33decce957d5d4d9608557d8d969d1e1b94056a159b2563624ade4b528a0c917"},
+    {"name": "AVGVISIB_85S_060M_201608_EARTH.IMG", "role": "average Earth visibility (any part of disk), 85-90 S, 60 m", "path": "AVGVISIB_85S_060M_201608_EARTH.IMG", "bytes": 51166728, "sha256": "0958313069d6039b2474c875ff662f28dbcba2bd853d9ea458aa807b7948c11f"},
+    {"name": "AVGVISIB_85S_060M_201608_EARTH.LBL", "role": "PDS label for the above", "path": "AVGVISIB_85S_060M_201608_EARTH.LBL", "bytes": 4111, "sha256": "45a61697d779fdb9170bca2553f9e0188aeda1159811d3531c348df8f57f68bd"}
+  ]
+}

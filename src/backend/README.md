@@ -2,7 +2,7 @@
 
 FastAPI service that will compute terrain-aware Sun/Earth line-of-sight and mission metrics for a fixed set of lunar south-pole sites. See [docs/PROJECT_PLAN.md](../../docs/PROJECT_PLAN.md) for scope and [docs/SCIENCE_CONVENTIONS.md](../../docs/SCIENCE_CONVENTIONS.md) for the physics conventions.
 
-**Status: M1 and M2 physics signed off.** The physics core runs end to end; the API wiring is M3. Only `GET /health` exists. Implemented and tested:
+**Status: M1 and M2 physics signed off and validated against NASA's published illumination maps** ([docs/physics/validation.md](../../docs/physics/validation.md)). The physics core runs end to end; the API wiring is M3. Only `GET /health` exists. Implemented and tested:
 
 | Component | Code | Explainer | Review |
 |---|---|---|---|
@@ -55,6 +55,7 @@ The SPICE kernels and terrain GeoTIFFs are not in the repo. Download the files l
 | Regenerate P3 review evidence and images | `python -m pipeline.terrain_evidence` |
 | Precompute far-zone horizons | `python -m pipeline.build_far_horizons` |
 | Regenerate M2 review evidence and horizon plots (~2 min) | `python -m pipeline.horizon_evidence` |
+| Validate against NASA illumination maps (~5 min) | `python -m pipeline.validate_illumination` |
 | Refresh the lock file | `pip freeze --exclude-editable` into `requirements.lock` (keep the two header comment lines) |
 
 ## Layout
@@ -89,6 +90,7 @@ src/backend/
 │   ├── terrain_evidence.py # P3 evidence tables and images
 │   ├── build_far_horizons.py # data/horizons/<site>_far.npz
 │   ├── horizon_evidence.py # M2 evidence tables and horizon plots
+│   ├── validate_illumination.py # comparison with NASA's published illumination maps
 │   ├── build_sky_grid.py   # builds data/sky/ grid
 │   ├── horizons_check.py   # JPL Horizons cross-check
 │   └── sky_evidence.py     # P2 evidence tables and plot
