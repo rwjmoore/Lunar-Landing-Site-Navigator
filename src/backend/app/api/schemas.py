@@ -19,9 +19,10 @@ Description: Pydantic models for the backend -> frontend JSON contract.
     real analysis must never return null metrics as results; it must return
     feasibility status "unavailable" or a documented error instead.
 
-    Request models (POST /analyze, /compare) are intentionally not defined yet:
-    they are added with those endpoints, once the fixed-site request shape
-    (site id vs. coordinates) is agreed.
+    Request models (M3) follow PROJECT_PLAN.md section 7: sites are addressed
+    by latitude/longitude and matched to a supported site; mission timing must
+    align with the hourly sky grid (docs/physics/sky.md section 3); vehicle
+    heights are limited to the approved 0-20 m (docs/physics/horizon.md).
 """
 
 from typing import Literal
@@ -153,6 +154,92 @@ class HealthResponse(ContractModel):
     datasets: dict[str, str] = Field(
         description="Dataset name -> load status. Empty until artifacts exist (M1)."
     )
+
+
+# ---------------------------------------------------------------------------
+# Requests (M3)
+# ---------------------------------------------------------------------------
+
+MAX_DURATION_HOURS = 366 * 24   # public-endpoint limit (PROJECT_PLAN.md section 8.1)
+MAX_COMPARE_SITES = 4
+
+
+class SiteRequest(ContractModel):
+    """A requested site; matched to a supported site by coordinates."""
+
+    name: str | None = None
+    latitude_deg: float = Field(ge=-90.0, le=90.0)
+    longitude_deg_east: float = Field(ge=-180.0, lt=360.0)
+
+
+class MissionRequest(ContractModel):
+    """Mission window. Start on a whole UTC hour; step a whole number of hours."""
+
+    start_utc: str = Field(description="ISO 8601 UTC, e.g. 2030-11-20T12:00:00Z")
+    duration_hours: float = Field(gt=0.0, le=MAX_DURATION_HOURS)
+    sample_step_seconds: int = Field(ge=3600, multiple_of=3600)
+
+
+class VehicleRequest(ContractModel):
+    """Heights above local ground, 0-20 m (the approved horizon range)."""
+
+    solar_panel_mast_height_m: float = Field(ge=0.0, le=20.0)
+    antenna_height_m: float = Field(ge=0.0, le=20.0)
+
+
+class ConstraintsRequest(ContractModel):
+    """Mission limits in hours; omit or null to disable a limit."""
+
+    max_darkness_hours: float | None = Field(default=None, ge=0.0)
+    max_earth_blackout_hours: float | None = Field(default=None, ge=0.0)
+
+
+class AnalyzeRequest(ContractModel):
+    """Request body of POST /analyze."""
+
+    site: SiteRequest
+    mission: MissionRequest
+    vehicle: VehicleRequest
+    constraints: ConstraintsRequest = Field(default_factory=ConstraintsRequest)
+
+
+class CompareRequest(ContractModel):
+    """Request body of POST /compare: several sites, one shared mission, vehicle and constraints."""
+
+    sites: list[SiteRequest] = Field(min_length=2, max_length=MAX_COMPARE_SITES)
+    mission: MissionRequest
+    vehicle: VehicleRequest
+    constraints: ConstraintsRequest = Field(default_factory=ConstraintsRequest)
+
+
+class CompareResponse(ContractModel):
+    """Response body of POST /compare: one candidate per requested site, same order."""
+
+    candidates: list[Candidate]
+    computation_ms: float = Field(ge=0.0)
+
+
+class SiteSummary(ContractModel):
+    """One supported site, as listed by GET /sites."""
+
+    id: str
+    name: str
+    latitude_deg: float
+    longitude_deg_east: float
+    surface_elevation_m: float
+    near_field_radius_m: float
+    coordinate_source: str
+
+
+class SitesResponse(ContractModel):
+    """Response body of GET /sites."""
+
+    sites: list[SiteSummary]
+    site_match_tolerance_m: float
+    supported_start_utc: str
+    supported_end_utc: str
+    sample_step_seconds_multiple: int
+    vehicle_height_range_m: list[float]
 
 
 def _require_equal_lengths(**arrays: list) -> None:
