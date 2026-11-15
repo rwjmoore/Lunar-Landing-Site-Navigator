@@ -23,6 +23,8 @@ dev = [
 pipeline = [
     # Offline data pipeline only (scripts/); never installed on the hosted server.
     "spiceypy>=6.0",
+    "rasterio>=1.4",    # GeoTIFF terrain reading (P3)
+    "pyproj>=3.6",      # map projection <-> lunar lat/lon (P3)
     "matplotlib>=3.8",  # evidence plots for physics reviews
 ]
 

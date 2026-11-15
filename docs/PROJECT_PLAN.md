@@ -185,8 +185,10 @@ The physics engine needs:
 
 | Role | Product | Resolution | Range from observer |
 |---|---|---|---|
-| Near-field | 5 m/px LOLA mosaic, 87–90°S (PGDA 81), or per-site 5 m/px DEMs (PGDA 78) | 5 m | 0 – ~10 km |
-| Far-field | 20 m/px LOLA DEM, 80–90°S (`LDEM_80S_20MPP_ADJ.TIF`, PGDA 90), downsampled offline to ~100 m | ~100 m | ~10 – 200 km |
+| Near-field | Per-site 5 m/px DEMs (PGDA 78), 16 × 16 km each | 5 m | 0 – per-site radius, max 8 km |
+| Far-field | 40 m/px LOLA DEM, 80–90°S (`LDEM_80S_40MPP_ADJ.TIF`, PGDA 90; published at 40 m, no downsampling needed) | 40 m | 8 – 200 km |
+
+*(Updated in P3, 2026-11-14: originally a 20 m far-field map downsampled to ~100 m and a ~10 km boundary. See `docs/physics/terrain.md`.)*
 
 **Horizon search radius: 200 km.** Justification: at the south pole the Sun's elevation stays within roughly ±1.5° of the local geometric horizon, so terrain *below* 0° still matters. A terrain feature of height $h$ above the observer, at distance $d$, appears at an elevation angle (in radians) of approximately
 
@@ -221,8 +223,8 @@ $$
 
 For $\Delta h = 10\ \text{m}$ that is about $0.57^\circ$ at $1\ \text{km}$, $0.06^\circ$ at $10\ \text{km}$ and $0.01^\circ$ at $50\ \text{km}$: only nearby terrain is noticeably affected. Therefore:
 
-- **Far-field horizon (~10–200 km)** is precomputed **once per site** offline at the base observer height, storing per-azimuth max elevation and source range. At request time, apply the analytic Δh correction using the stored range.
-- **Near-field horizon (0–~10 km)** is recomputed per observer height (solar mast, antenna) from the 5 m crop.
+- **Far-field horizon (per-site near-field radius to 200 km)** is precomputed **once per site** offline at the base observer height, storing per-azimuth max elevation and source range. At request time, apply the analytic Δh correction using the stored range.
+- **Near-field horizon (0 to the per-site radius, max 8 km; `near_field_radius_m` in `data/sites/south_pole_sites.json`)** is recomputed per observer height (solar mast, antenna) from the 5 m crop.
 - **Combined horizon** = `max(near_field(h), far_field_corrected(h))` per azimuth bin. Keep both components available for diagnostics (P1 dominant-obstruction source).
 - The exact near/far boundary is a tunable parameter; validate in M2 that moving it does not change results beyond a documented tolerance.
 
@@ -376,6 +378,8 @@ Use typed JSON API responses; keep offline JSON fixtures for UI development and 
 | `POST /optimize` (P1) | Bounded search over allowed site/date/height configurations with explicit objective/constraints. |
 | `GET /data-provenance` | Describe DEM, ephemeris sources/versions and assumptions. |
 
+**Implemented in M3 (2026-11-14):** all endpoints above except `/optimize`. Request rules, error codes, the `/compare` response shape and measured latency are in `docs/API.md`. Decisions made in M3: site match tolerance **100 m**; mission duration **≤ 366 days**; `/compare` takes **2–4 sites**; with no constraints, feasibility is `"unknown"`; a result containing unknown visibility returns `503 data_unavailable` because v1 visibility is boolean (none occurs with current data); CORS origins come from `LLSN_CORS_ORIGINS`. Rate limiting and request timeouts are left to deployment (M6).
+
 ### Example `POST /analyze` request
 
 ```json
@@ -474,7 +478,17 @@ The `<5 s` target applies to a documented standard workload, e.g. 2 supported pr
 
 ### 8.1 Hosting and deployment architecture
 
-The app is hosted publicly. **Decision: fixed site list only.** The API supports a curated set of precomputed sites; arbitrary click-anywhere analysis is out of scope because it would require GB-scale terrain on the server.
+The app is hosted publicly.
+
+**Decision: south pole first, curated sites (2026-11-14).** The API supports a curated set of precomputed south-pole sites, built from locally hosted LOLA terrain (about 1 GB of source data, see `docs/physics/terrain.md`). Custom coordinates anywhere on the Moon are a **planned later expansion**, also through locally hosted terrain, not live third-party queries.
+
+**Notes for the later expansion** (investigated 2026-11-14):
+- The challenge suggests curated sites beyond the pole (Apollo, CLPS, other programs) and custom coordinates, as optional objectives.
+- No public service returns raw lunar elevations on demand (Moon Trek serves rendered image tiles only).
+- The PGDA polar LOLA maps (60–90°S at 20–240 m, 87–90°S at 5 m) are internally tiled GeoTIFFs on a server that supports HTTP range requests, so windows can be read without downloading whole files.
+- For ±60° latitude the best map is SLDEM2015 (LOLA + Kaguya, ~59 m at the equator), distributed only as raw row-ordered images and JPEG2000; it would need converting to a tiled format and hosting ourselves (estimated 10–20 GB for a two-level global tile set).
+- A north-polar equivalent has not been verified.
+- Physics (P1 frames, P2 sky grid) already works at any location except within 0.001° of a pole.
 
 **Two-stage architecture: build offline, keep the server light.**
 
@@ -511,7 +525,7 @@ All heavy dependencies, large downloads, and physics-review-gated computation ru
 
 **Hosting platform:** any container host works (e.g. Fly.io, Render, Cloud Run, Hugging Face Spaces). Free tiers spin down when idle and can add 10–60 s cold starts; for live demos use an always-on instance or a warm-up request. Choose the platform once artifact sizes are measured.
 
-**Open items:** supported date range (proposed 2026–2040); hosting budget (free tier vs always-on); frontend host domain for CORS.
+**Open items:** hosting budget (free tier vs always-on); frontend host domain for CORS.
 
 ## 9. Execution milestones (in order)
 
