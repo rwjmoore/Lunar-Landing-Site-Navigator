@@ -40,6 +40,8 @@ src/backend/
 │   └── api/
 │       ├── routes.py    # HTTP endpoints (only /health in M0)
 │       └── schemas.py   # Pydantic models = the frontend/backend JSON contract
+│   ├── coordinates/
+│   │   └── frames.py    # site <-> position, east/north/up, az/el, great circles (docs/physics/frames.md)
 │   ├── metrics/
 │   │   ├── core.py      # EvaluationContext, Metric interface, MetricResult, runner
 │   │   ├── visibility.py# VisibleFraction, LongestOutage (reused for Sun and Earth)
@@ -49,6 +51,7 @@ src/backend/
 ├── tests/
 │   ├── test_health.py
 │   ├── test_contract.py # validates docs/frontend-backend_interface.json against schemas.py
+│   ├── test_frames.py
 │   ├── test_metrics_core.py
 │   ├── test_visibility_metrics.py
 │   └── test_constraints.py
@@ -56,7 +59,7 @@ src/backend/
 └── requirements.lock    # exact pinned versions of the tested environment
 ```
 
-Physics modules (`astronomy/`, `coordinates/`, `terrain/`, `physics/`) are added in later milestones. They, like `metrics/` and `planning/`, stay independent of FastAPI. To add a metric, follow "Adding a metric" in [docs/metrics.md](../../docs/metrics.md).
+Physics modules (`astronomy/`, `terrain/`, `physics/`) are added in later milestones; `coordinates/` exists (P1, signed off). They, like `metrics/` and `planning/`, stay independent of FastAPI. To add a metric, follow "Adding a metric" in [docs/metrics.md](../../docs/metrics.md).
 
 ## The JSON contract
 
