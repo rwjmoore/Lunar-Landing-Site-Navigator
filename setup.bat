@@ -63,6 +63,7 @@ echo === [2/4] Data: download NASA terrain (about 1 GB the first time) and build
 pushd "%BACKEND%"
 "%VENV_PY%" -m pipeline.fetch_data || (popd & goto :fail)
 "%VENV_PY%" -W ignore -m pipeline.build_terrain || (popd & goto :fail)
+"%VENV_PY%" -W ignore -m pipeline.build_elevation_tiles || (popd & goto :fail)
 popd
 
 echo.

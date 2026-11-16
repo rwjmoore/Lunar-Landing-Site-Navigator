@@ -295,7 +295,8 @@ export function App() {
           onCoordinates={() => {
             changeDrawer('mission', true)
             requestAnimationFrame(() => document.getElementById('mission-title')?.focus())
-          }} availability={catalogError || availability} coverageEdgeDeg={demo ? null : catalog.customNorthEdgeDeg} /></div>
+          }} availability={catalogError || availability} coverageEdgeDeg={demo ? null : catalog.customNorthEdgeDeg}
+          elevationBase={!demo && apiUrl ? `${apiUrl.replace(/\/+$/, '')}/tiles/elevation` : null} /></div>
         {view === 'horizon' && <HorizonView key={`${key}/${source ?? ''}`} site={site} candidate={candidate} baseline={baseline} index={index} onSeek={setIndex}
           full={full} onFull={() => setFull(true)} onSector={() => setFull(false)} sector={sector} onSectorLimits={setSector}
           onLoad={loadFile} message={panelMessage} />}

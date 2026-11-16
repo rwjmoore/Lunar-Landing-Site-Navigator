@@ -43,6 +43,10 @@ On startup the frontend loads the supported sites from `GET /sites`, so their co
 
 The frontend sends the plan's coordinate-based request and checks the response against the requested location (within the backend's published site-match tolerance), UTC samples, cadence, and vehicle. When the API rejects a request, its own explanation is shown, e.g. why a mission is out of range. The mast comparison uses two analyses with the same mission and constraints. A live site comparison runs one `/analyze` request per supported site with identical settings.
 
+### Terrain overlay
+
+The Lunar Map's **Terrain overlay** panel (bottom left) adds an **Elevation** or **Slope** heat map from the same LOLA terrain the analysis uses (40 m across 80–90°S, 5 m around the four sites), with an opacity slider and legend; the cursor readout then also shows the height (and slope) under the cursor. Tiles come from the API at `/tiles/elevation/` (built by `python -m pipeline.build_elevation_tiles`); they hold heights rather than colours, so the colours stretch to the heights in view. Code: `src/elevation.ts`. Details: [docs/elevation_overlay.md](../../docs/elevation_overlay.md).
+
 ### Custom points and mission planning
 
 - **Custom points.** If `GET /sites` reports `custom_points_available`, the map draws a green dashed ring at `custom_point_north_edge_latitude_deg` (86.7°S today). Any point inside it can be analysed: the backend computes its terrain horizon on demand, which takes a few seconds the first time. Points outside it show a coverage message.

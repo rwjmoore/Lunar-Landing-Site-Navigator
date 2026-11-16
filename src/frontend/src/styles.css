@@ -385,6 +385,14 @@ input:disabled { opacity: 0.58; }
 .horizon-site { margin-left: auto; align-self: center; }
 .imagery-note { color: #b5d8c6 !important; max-width: 300px; }
 
+.overlay-panel { position: absolute; left: 14px; bottom: 52px; width: min(290px, calc(100% - 28px)); gap: 6px; }
+.overlay-modes { display: flex; gap: 4px; flex-wrap: wrap; }
+.overlay-modes button { min-height: 27px; padding: 3px 9px; font-size: 11px; background: #101218; }
+.overlay-modes button[aria-pressed='true'] { background: #293241; border-color: #597090; color: #f3f7ff; font-weight: 650; }
+.overlay-legend { height: 10px; border-radius: 3px; border: 1px solid #3a3f4a; }
+.overlay-scale { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; font-size: 10px; color: #dfe6f0; }
+.overlay-opacity { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; font-size: 10px; color: #c0c6d0; }
+
 @media (max-width: 1140px) {
   .app { --bar-height: 117px; }
   .brand { top: 7px; transform: none; font-size: 20px; }

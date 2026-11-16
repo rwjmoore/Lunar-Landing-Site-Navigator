@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import { coordinates, sameSite, type Site } from './analysis'
 import { Canvas } from './canvas'
-import { insideNac, layers, levelFor, TileCache, tilesFor, type Bounds, type Tile } from './imagery'
+import { colourise, decodeTile, elevationTiles, finestLevel, loadManifest, pixelIndex, scales, SLOPE_RANGE, slopeOf, viewRange,
+  type ElevationTile, type HeightTile, type Manifest, type OverlayMode } from './elevation'
+import { insideNac, layers, levelFor, TileCache, tilesFor, type Bounds, type Fetchable, type Tile } from './imagery'
 import { fitToMap, groundDistance, localDirection, mapRadius, project, unproject, type Point } from './polar'
 import basemapUrl from './assets/lroc-south-pole.webp'
 
@@ -44,7 +46,7 @@ function circle(ctx: CanvasRenderingContext2D, { x, y }: Point, r: number) {
 }
 
 function paintBase(ctx: CanvasRenderingContext2D, pole: Point, scale: number, image: HTMLImageElement | null,
-  paintTiles?: () => void) {
+  paintTiles?: () => void, paintOverlay?: () => void) {
   circle(ctx, pole, mapRadius * scale)
   ctx.clip()
   ctx.fillStyle = '#182028'
@@ -60,6 +62,7 @@ function paintBase(ctx: CanvasRenderingContext2D, pole: Point, scale: number, im
     ctx.fillStyle = '#0710183b'
     ctx.fill()
   }
+  paintOverlay?.()   // after the dimming, so the overlay's colours match its legend
 }
 
 /** Which imagery the view centre shows, stated honestly (including when pixels are enlarged past native detail). */
@@ -195,10 +198,12 @@ function viewport(width: number, height: number, center: Point, zoom: number) {
   return { scale, pole: { x: width / 2 - center.x * scale, y: height / 2 + center.y * scale } }
 }
 
-export function MapView({ site, sites, onSelect, onInspect, onCoordinates, availability, coverageEdgeDeg = null }: {
+export function MapView({ site, sites, onSelect, onInspect, onCoordinates, availability, coverageEdgeDeg = null, elevationBase = null }: {
   site: Site; sites: Site[]; onSelect: (site: Site) => void; onInspect: () => void; onCoordinates: () => void; availability: string
   /** Northern edge of the backend's on-demand terrain coverage, drawn as a ring; null hides it. */
   coverageEdgeDeg?: number | null
+  /** URL of the API's elevation overlay tiles (/tiles/elevation); null when there is no API. */
+  elevationBase?: string | null
 }) {
   const { image, failed } = useBasemap()
   const [center, setCenter] = useState<Point>(origin)
@@ -212,23 +217,52 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
   const latest = useRef({ center, zoom })
   latest.current = { center, zoom }
   const tiles = useRef<TileCache | null>(null)
-  const pendingTiles = useRef<{ signature: string; tiles: Tile[] }>({ signature: '', tiles: [] })
+  const pendingTiles = useRef<{ signature: string; tiles: Tile[]; elevation: Fetchable[] }>({ signature: '', tiles: [], elevation: [] })
   const settleTimer = useRef<number | undefined>(undefined)
   useEffect(() => () => { if (settleTimer.current !== undefined) clearTimeout(settleTimer.current) }, [])
   // Switching HD off stops all imagery traffic at once: no settle delay, during which queued tiles could still start.
   useEffect(() => {
     if (highRes) return
     if (settleTimer.current !== undefined) { clearTimeout(settleTimer.current); settleTimer.current = undefined }
-    pendingTiles.current = { signature: '', tiles: [] }
+    pendingTiles.current = { ...pendingTiles.current, signature: '', tiles: [] }
     tiles.current?.request([])
   }, [highRes])
+
+  // Terrain overlay (elevation / slope heat map) from the API's LOLA tiles; off by default.
+  const [overlay, setOverlay] = useState<OverlayMode>('off')
+  const [opacity, setOpacity] = useState(0.7)
+  const [manifest, setManifest] = useState<Manifest | null>(null)
+  const [elevationRange, setElevationRange] = useState<[number, number] | null>(null)
+  const manifestRef = useRef<Manifest | null>(null)
+  manifestRef.current = manifest
+  const heights = useRef<TileCache<HeightTile> | null>(null)
+  const coloured = useRef<{ style: string; tiles: Map<string, OffscreenCanvas> }>({ style: '', tiles: new Map() })
+  const layer = useRef<OffscreenCanvas | null>(null)
+  const lastView = useRef<{ view: Bounds; level: number }>({ view: { minX: 0, maxX: 0, minY: 0, maxY: 0 }, level: 0 })
+  const overlayOn = overlay !== 'off' && manifest !== null
+  useEffect(() => {
+    setManifest(null)
+    if (!elevationBase) return
+    const controller = new AbortController()
+    loadManifest(elevationBase, controller.signal).then(loaded => { if (!controller.signal.aborted) setManifest(loaded) })
+    return () => controller.abort()
+  }, [elevationBase])
+  // Switching the overlay off stops its downloads at once, like HD.
+  useEffect(() => {
+    if (overlayOn) return
+    pendingTiles.current = { ...pendingTiles.current, signature: '', elevation: [] }
+    heights.current?.request([])
+  }, [overlayOn])
+
   if (!tiles.current) {
     let pending = false
-    tiles.current = new TileCache(() => {
+    const repaint = () => {
       if (pending) return
       pending = true
       requestAnimationFrame(() => { pending = false; setTileVersion(value => value + 1) })
-    })
+    }
+    tiles.current = new TileCache(repaint)
+    heights.current = new TileCache<HeightTile>(repaint, blob => decodeTile(blob, manifestRef.current!), () => {}, 6, 300)
   }
   const [hover, setHover] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -247,9 +281,10 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
     const dpr = window.devicePixelRatio || 1
     const view: Bounds = { minX: -pole.x / scale, maxX: (w - pole.x) / scale, minY: (pole.y - h) / scale, maxY: pole.y / scale }
     const needed: Tile[] = []
+    const neededElevation: ElevationTile[] = []
     let nacShown = false
     let liveShown = false
-    // High-res off: only the standard single image is drawn, and no tiles are requested (any in flight are cancelled).
+    // HD off: only the standard single image is drawn, and no tiles are requested (any in flight are cancelled).
     paintBase(ctx, pole, scale, image, !highRes ? undefined : () => {
       const target = levelFor(scale * dpr)
       ctx.imageSmoothingQuality = 'high'
@@ -271,15 +306,52 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
           }
         }
       }
+    }, !overlayOn ? undefined : () => {
+      const finest = finestLevel(manifest!)
+      const target = Math.min(levelFor(scale * dpr), finest)
+      const regionTop = Math.min(target, manifest!.region.levels[1])
+      lastView.current = { view, level: target }
+      const mode = overlay as 'elevation' | 'slope'
+      const range = mode === 'slope' ? SLOPE_RANGE : elevationRange ?? manifest!.height_range_m
+      const style = `${mode}/${range[0]}/${range[1]}`
+      if (coloured.current.style !== style) coloured.current = { style, tiles: new Map() }
+      const pixelW = Math.round(w * dpr), pixelH = Math.round(h * dpr)
+      if (!layer.current || layer.current.width !== pixelW || layer.current.height !== pixelH) layer.current = new OffscreenCanvas(pixelW, pixelH)
+      const target2d = layer.current.getContext('2d')!
+      target2d.setTransform(dpr, 0, 0, dpr, 0, 0)
+      target2d.clearRect(0, 0, w, h)
+      // Coarse to fine on one opaque layer, so finer tiles cover coarser ones instead of blending with them.
+      for (let level = Math.max(0, regionTop - 3); level <= target; level++) {
+        for (const tile of elevationTiles(elevationBase!, manifest!, level, view)) {
+          if (level === target || level === regionTop) neededElevation.push(tile)
+          const data = heights.current!.get(tile.key)
+          if (!data) continue
+          let picture = coloured.current.tiles.get(tile.key)
+          if (!picture) {
+            const pixelM = (tile.bounds.maxX - tile.bounds.minX) * 1000 / data.size
+            picture = colourise(mode === 'slope' ? slopeOf(data, pixelM) : data.heights, data.size, mode, range)
+            coloured.current.tiles.set(tile.key, picture)
+            if (coloured.current.tiles.size > 150) coloured.current.tiles.delete(coloured.current.tiles.keys().next().value!)
+          }
+          const a = screenPoint({ x: tile.bounds.minX, y: tile.bounds.maxY }, pole, scale)
+          const b = screenPoint({ x: tile.bounds.maxX, y: tile.bounds.minY }, pole, scale)
+          target2d.drawImage(picture, Math.floor(a.x), Math.floor(a.y), Math.ceil(b.x) - Math.floor(a.x), Math.ceil(b.y) - Math.floor(a.y))
+        }
+      }
+      ctx.save()
+      ctx.globalAlpha = opacity
+      ctx.drawImage(layer.current, 0, 0, w, h)
+      ctx.restore()
     })
     // Ask for tiles only once zooming/panning pauses, so levels merely passed through are never downloaded.
-    const signature = needed.map(tile => tile.key).join('|')
+    const signature = [...needed, ...neededElevation].map(tile => tile.key).join('|')
     if (signature !== pendingTiles.current.signature) {
-      pendingTiles.current = { signature, tiles: needed }
+      pendingTiles.current = { signature, tiles: needed, elevation: neededElevation }
       if (settleTimer.current !== undefined) clearTimeout(settleTimer.current)
       settleTimer.current = window.setTimeout(() => {
         settleTimer.current = undefined
         cache.request(pendingTiles.current.tiles)
+        heights.current!.request(pendingTiles.current.elevation)
       }, settleMs)
     }
     setImagery(imageryNote(1 / (scale * dpr), center, nacShown, liveShown))
@@ -319,7 +391,54 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
     ctx.restore()
     paintScale(ctx, { x: 24, y: h - 28 }, pole, scale, Math.min(w * 0.23, 138))
     // tileVersion repaints as tiles arrive.
-  }, [center, coverageEdgeDeg, highRes, image, site, sites, zoom, tileVersion])
+  }, [center, coverageEdgeDeg, elevationBase, elevationRange, highRes, image, manifest, opacity, overlay, overlayOn, site, sites, zoom, tileVersion])
+
+  // Stretch the elevation colours to the heights in view, once the view has settled (not on every pan frame).
+  useEffect(() => {
+    if (!overlayOn || overlay !== 'elevation') return
+    const timer = window.setTimeout(() => {
+      const { view, level } = lastView.current
+      const samples: number[] = []
+      for (let l = level; l >= 0 && samples.length < 64; l--) {
+        for (const tile of elevationTiles(elevationBase!, manifest!, l, view)) {
+          const data = heights.current!.get(tile.key)
+          if (!data) continue
+          const span = tile.bounds.maxX - tile.bounds.minX
+          for (let r = 4; r < data.size; r += 16) {
+            const y = tile.bounds.maxY - (r + 0.5) / data.size * span
+            if (y < view.minY || y > view.maxY) continue
+            for (let c = 4; c < data.size; c += 16) {
+              const x = tile.bounds.minX + (c + 0.5) / data.size * span
+              const v = data.heights[r * data.size + c]
+              if (x >= view.minX && x <= view.maxX && !Number.isNaN(v)) samples.push(v)
+            }
+          }
+        }
+      }
+      const next = viewRange(samples)
+      if (next) setElevationRange(current => current && current[0] === next[0] && current[1] === next[1] ? current : next)
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [center, zoom, tileVersion, overlay, overlayOn, elevationBase, manifest])
+
+  /** Height (and slope) under a map point, from the finest loaded overlay tile. */
+  function terrainAt(p: Point, scale: number): string {
+    if (!overlayOn) return ''
+    const top = Math.min(levelFor(scale * (window.devicePixelRatio || 1)), finestLevel(manifest!))
+    const probe = { minX: p.x, maxX: p.x, minY: p.y, maxY: p.y }
+    for (let level = top; level >= 0; level--) {
+      for (const tile of elevationTiles(elevationBase!, manifest!, level, probe)) {
+        const data = heights.current!.get(tile.key)
+        const index = data ? pixelIndex(tile.bounds, data.size, p.x, p.y) : -1
+        if (!data || index < 0 || Number.isNaN(data.heights[index])) continue
+        const height = `${Math.round(data.heights[index]).toLocaleString('en-US')} m`
+        if (overlay !== 'slope') return ` · ${height}`
+        const slope = slopeOf(data, (tile.bounds.maxX - tile.bounds.minX) * 1000 / data.size)[index]
+        return ` · ${height} · ${Number.isNaN(slope) ? '—' : slope.toFixed(1)}° slope`
+      }
+    }
+    return ''
+  }
 
   function select(point: Point, pole: Point, scale: number) {
     const p = projectedPoint(point, pole, scale)
@@ -345,7 +464,7 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
       }
     }
     const p = projectedPoint(point, pole, scale)
-    setHover(Math.hypot(p.x, p.y) <= mapRadius ? coordinates(unproject(p)) : 'Outside the map area')
+    setHover(Math.hypot(p.x, p.y) <= mapRadius ? coordinates(unproject(p)) + terrainAt(p, scale) : 'Outside the map area')
   }
 
   function zoomBy(factor: number) {
@@ -427,6 +546,22 @@ export function MapView({ site, sites, onSelect, onInspect, onCoordinates, avail
         <button className="hires-toggle" aria-pressed={highRes} title={highRes ? 'High-resolution imagery on (LROC NAC 1 m/px, WAC 100 m/px). Click to use the standard image.'
           : 'Load high-resolution imagery (LROC NAC 1 m/px, WAC 100 m/px) for this view'} onClick={() => setHighRes(value => !value)}>HD</button>
       </div>
+      {elevationBase && <div className="overlay-panel inset-label" role="group" aria-label="Terrain overlay">
+        <div className="overlay-modes">
+          {(['off', 'elevation', 'slope'] as const).map(mode => <button key={mode} aria-pressed={overlay === mode} disabled={mode !== 'off' && !manifest}
+            title={!manifest && mode !== 'off' ? 'Terrain overlay tiles are not available from this server (run pipeline.build_elevation_tiles).' : undefined}
+            onClick={() => setOverlay(mode)}>{mode === 'off' ? 'Imagery only' : mode === 'elevation' ? 'Elevation' : 'Slope'}</button>)}
+        </div>
+        {overlayOn && <>
+          <div className="overlay-legend" aria-hidden="true" style={{ background: `linear-gradient(90deg, ${scales[overlay as 'elevation' | 'slope'].join(', ')})` }} />
+          <div className="overlay-scale">
+            {overlay === 'slope' ? <><span>{SLOPE_RANGE[0]}°</span><span>{SLOPE_RANGE[1]}°+</span></>
+              : (elevationRange ?? manifest!.height_range_m).map((value, i) => <span key={i}>{Math.round(value).toLocaleString('en-US')} m</span>)}
+          </div>
+          <span>{overlay === 'slope' ? 'Surface slope' : 'Height above the 1,737.4 km sphere, scaled to this view'} · LOLA 40 m, 5 m near sites</span>
+          <label className="overlay-opacity">Opacity <input type="range" min={0.2} max={1} step={0.05} value={opacity} onChange={event => setOpacity(Number(event.target.value))} /></label>
+        </>}
+      </div>}
       <div className="map-readouts">
         <div className="inset-label cursor-position"><span>Cursor position</span><strong>{hover ?? 'Move over the map'}</strong></div>
       </div>

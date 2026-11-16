@@ -49,7 +49,7 @@ Lunar-Landing-Site-Navigator/
 │   ├── horizons/           # precomputed far-terrain horizons per site (committed)
 │   ├── kernels/            # SPICE kernels (downloaded, gitignored)
 │   ├── raw/                # NASA terrain and validation maps (downloaded, gitignored)
-│   └── artifacts/          # terrain grids built from raw data (generated, gitignored)
+│   └── artifacts/          # terrain grids and map elevation tiles built from raw data (generated, gitignored)
 └── src/
     ├── backend/            # Python: FastAPI server (app/) and offline data pipeline (pipeline/)
     └── frontend/           # web UI (separate engineer)
@@ -210,6 +210,7 @@ None of this is needed to run the API. Each step is described in its physics exp
 | Rebuild the Sun/Earth sky grid | `python -m pipeline.build_sky_grid` | kernels |
 | Cross-check Sun/Earth against JPL Horizons | `python -m pipeline.horizons_check` | internet |
 | Rebuild the far-terrain horizons (~40 s) | `python -m pipeline.build_far_horizons` | terrain |
+| Rebuild the map's elevation/slope overlay tiles (setup runs this) | `python -m pipeline.build_elevation_tiles` | terrain |
 | Reproduce the validation against NASA's maps (~5 min) | `python -m pipeline.validate_illumination` | terrain, validation |
 | Regenerate review evidence and plots | `python -m pipeline.sky_evidence`, `terrain_evidence`, `horizon_evidence` | as above |
 

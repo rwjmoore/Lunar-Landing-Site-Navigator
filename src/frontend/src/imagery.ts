@@ -26,7 +26,7 @@ export interface ImageryLayer {
 // 512 px tiles: the server renders one in about the same time as a 256 px tile (~3 s), so 4x the area per request.
 const TILE_PX = 512
 /** Pyramid root: one tile spanning ±320 km, which contains the whole 80–90°S map (radius ≈ 304 km). */
-const ROOT_KM = 640
+export const ROOT_KM = 640
 const ROOT_MIN = -ROOT_KM / 2
 
 // Coverage edge of the NAC mosaic (84°S), in projected km: 2 R tan((90 - 84)° / 2).
@@ -47,14 +47,16 @@ export const layers: ImageryLayer[] = [
 ]
 
 export interface Bounds { minX: number; maxX: number; minY: number; maxY: number }
-export interface Tile { layer: ImageryLayer; level: number; col: number; row: number; bounds: Bounds; key: string; url: string }
+/** Anything the loader can fetch: a unique key and a URL. */
+export interface Fetchable { key: string; url: string }
+export interface Tile extends Fetchable { layer: ImageryLayer; level: number; col: number; row: number; bounds: Bounds }
 
 /** The pyramid level whose tiles show at most one image pixel per device pixel at this scale. */
 export function levelFor(devicePixelsPerKm: number) {
   return Math.max(0, Math.ceil(Math.log2(ROOT_KM * devicePixelsPerKm / TILE_PX)))
 }
 
-function tileBounds(level: number, col: number, row: number): Bounds {
+export function tileBounds(level: number, col: number, row: number): Bounds {
   const span = ROOT_KM / 2 ** level
   return { minX: ROOT_MIN + col * span, maxX: ROOT_MIN + (col + 1) * span, minY: ROOT_MIN + row * span, maxY: ROOT_MIN + (row + 1) * span }
 }
@@ -110,27 +112,29 @@ export function insideNac(x: number, y: number) {
   return Math.hypot(x, y) < NAC_EDGE_KM
 }
 
-type Entry = { state: 'loading' | 'loaded' | 'failed'; bitmap?: ImageBitmap; controller?: AbortController }
+type Entry<T> = { state: 'loading' | 'loaded' | 'failed'; value?: T; controller?: AbortController }
 
 /** Loads tiles with bounded concurrency, nearest the view centre first, and keeps a bounded cache.
- *  Downloads for tiles the view no longer needs are cancelled, so their slots go to the current view. */
-export class TileCache {
-  private entries = new Map<string, Entry>()
-  private queue: Tile[] = []
+ *  Downloads for tiles the view no longer needs are cancelled, so their slots go to the current view.
+ *  `decode` turns a downloaded tile into what the map draws (an image bitmap, or decoded heights). */
+export class TileCache<T = ImageBitmap> {
+  private entries = new Map<string, Entry<T>>()
+  private queue: Fetchable[] = []
   private active = 0
   failures = 0
   loaded = 0
   cancelled = 0
 
-  constructor(private onChange: () => void, private maxActive = 6, private maxEntries = 600) {}
+  constructor(private onChange: () => void, private decode: (blob: Blob) => Promise<T> = blob => createImageBitmap(blob) as Promise<T>,
+    private dispose: (value: T) => void = value => (value as ImageBitmap).close?.(), private maxActive = 6, private maxEntries = 600) {}
 
   get(key: string) {
     const entry = this.entries.get(key)
-    return entry?.state === 'loaded' ? entry.bitmap : undefined
+    return entry?.state === 'loaded' ? entry.value : undefined
   }
 
   /** Make these the only tiles wanted: cancel other downloads, queue the missing ones, start loading. */
-  request(tiles: Tile[]) {
+  request(tiles: Fetchable[]) {
     const wanted = new Set(tiles.map(tile => tile.key))
     for (const [key, entry] of this.entries) {
       if (entry.state === 'loading' && !wanted.has(key)) {
@@ -146,13 +150,13 @@ export class TileCache {
       const tile = this.queue.shift()!
       if (this.entries.has(tile.key)) continue
       const controller = new AbortController()
-      const entry: Entry = { state: 'loading', controller }
+      const entry: Entry<T> = { state: 'loading', controller }
       this.entries.set(tile.key, entry)
       this.active++
       fetch(tile.url, { signal: controller.signal })
         .then(reply => { if (!reply.ok) throw new Error(`HTTP ${reply.status}`); return reply.blob() })
-        .then(blob => createImageBitmap(blob))
-        .then(bitmap => { entry.state = 'loaded'; entry.bitmap = bitmap; this.loaded++ })
+        .then(blob => this.decode(blob))
+        .then(value => { entry.state = 'loaded'; entry.value = value; this.loaded++ })
         .catch(() => {
           if (controller.signal.aborted) { this.entries.delete(tile.key); this.cancelled++ }   // may be requested again later
           else { entry.state = 'failed'; this.failures++ }   // stays failed (no retry loop); coarser layers still show
@@ -171,7 +175,7 @@ export class TileCache {
     for (const [key, entry] of this.entries) {
       if (this.entries.size <= this.maxEntries) break
       if (entry.state === 'loading') continue
-      entry.bitmap?.close()
+      if (entry.value !== undefined) this.dispose(entry.value)
       this.entries.delete(key)
     }
   }

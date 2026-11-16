@@ -15,6 +15,7 @@ FastAPI service that computes terrain-aware Sun/Earth line of sight and mission 
 | M3 API | `app/api/` | [docs/API.md](../../docs/API.md) | — |
 | Planning tools: calendar, insights, rescue | `app/planning/`, `app/api/planning_*.py` | [docs/physics/planning.md](../../docs/physics/planning.md) | Signed off |
 | Custom points (on-demand horizons, south of 86.70°S) | `app/physics/point_terrain.py` | [docs/physics/custom_points.md](../../docs/physics/custom_points.md) | Signed off |
+| Map elevation/slope overlay tiles (display only) | `app/terrain/elevation_tiles.py`, `pipeline/build_elevation_tiles.py` | [docs/elevation_overlay.md](../../docs/elevation_overlay.md) | Signed off |
 
 ## Two halves: runtime and offline pipeline
 
@@ -84,7 +85,8 @@ src/backend/
 │   ├── coordinates/
 │   │   └── frames.py       # site <-> position, east/north/up, az/el, great circles
 │   ├── terrain/
-│   │   └── grid.py         # polar stereographic projection, TerrainGrid, bilinear height lookup
+│   │   ├── grid.py         # polar stereographic projection, TerrainGrid, bilinear height lookup
+│   │   └── elevation_tiles.py # map overlay tile scheme and height encoding (served at /tiles/elevation/)
 │   ├── physics/
 │   │   ├── horizon.py      # ray casting, far-field candidates, per-height horizon (cached)
 │   │   ├── point_terrain.py # on-demand horizons for custom points (high / standard detail)
@@ -104,6 +106,7 @@ src/backend/
 │   ├── checksums.py        # SHA-256 verification against data/manifests/
 │   ├── spice_kernels.py    # checksum-verified DE421 kernel loading
 │   ├── build_terrain.py    # terrain artifacts + data/sites/south_pole_sites.json
+│   ├── build_elevation_tiles.py # data/artifacts/elevation_tiles/: map elevation overlay tiles
 │   ├── terrain_evidence.py # P3 evidence tables and images
 │   ├── build_far_horizons.py # data/horizons/<site>_far.npz
 │   ├── horizon_evidence.py # M2 evidence tables and horizon plots
@@ -122,6 +125,7 @@ src/backend/
 │   ├── test_sky_runtime.py # synthetic grids, no SPICE
 │   ├── test_sky_spice.py   # real grid vs SPICE (skipped without kernels)
 │   ├── test_terrain_grid.py # synthetic grids, projection vs pyproj
+│   ├── test_elevation_tiles.py # overlay tile encoding, PNG writer, tiles vs LOLA grids, served by the API
 │   ├── test_terrain_data.py # real artifacts vs source GeoTIFFs (skipped if not built)
 │   ├── test_horizon_synthetic.py # sphere, wall, ridge, monotonicity, no-data, visibility rules
 │   ├── test_horizon_sites.py # real-site tolerances, mast/Earth independence, reproducibility
